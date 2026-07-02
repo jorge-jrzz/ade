@@ -1,0 +1,10 @@
+[project]
+name = "ade"
+version = "0.1.0"
+description = "Architectural Design Engine"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "manim>=0.20.1",
+    "ply>=3.11",
+]

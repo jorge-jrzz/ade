@@ -1,0 +1,11 @@
+# My first ADE program
+sit("Hello, World!")
+
+# Variables and basic arithmetic also work
+greeting = "ADE is running on ply"
+sit(greeting)
+
+x = 2 + 3 * 4
+sit(x)
+sit((2 + 3) * 4)
+sit("Ojito con el Mike")
