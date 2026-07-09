@@ -8,5 +8,4 @@ sit(greeting)
 x = 2 + 3 * 4
 sit(x)
 sit((2 + 3) * 4)
-sit("Ojito con el Mike")
-sit("Ojooooo")
+sit("Maths works!")
