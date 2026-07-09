@@ -3,8 +3,19 @@ name = "ade"
 version = "0.1.0"
 description = "Architectural Design Engine"
 readme = "README.md"
+authors = [
+    { name = "Jorge Juarez", email = "jorgeang33@gmail.com" },
+    { name = "Miguel Angel", email = "maiki200202@gmail.com" }
+]
 requires-python = ">=3.13"
 dependencies = [
     "manim>=0.20.1",
     "ply>=3.11",
 ]
+
+[project.scripts]
+ade = "ade:main"
+
+[build-system]
+requires = ["uv_build>=0.11.27,<0.12.0"]
+build-backend = "uv_build"
