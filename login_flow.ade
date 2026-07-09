@@ -1,0 +1,23 @@
+// 1. Declaracion de primitivas de software (Nodos)
+service frontend "React App" color: blue
+gateway api "API Gateway" color: orange
+service auth "Auth Service" color: green
+database db "Users DB" color: red
+
+
+// 2. Bloque de alcance espacial (Scope de infraestructura)
+infra "AWS Cloud" {
+    api
+    auth
+    db
+}
+
+
+// 3. Bloque de control secuencial (Sustituto de ciclos)
+flow "User Login Sequence" {
+    step 1: frontend --[https]--> api
+    step 2: api --> auth
+    step 3: auth --[tcp]--> db
+    step 4: db --> auth
+    step 5: auth --[token]--> frontend
+}

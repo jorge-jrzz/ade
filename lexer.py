@@ -10,6 +10,13 @@ import ply.lex as lex
 # Reserved words: identifier -> token type
 reserved = {
     "sit": "SIT",  # prints to console: sit("Hello, World!")
+    "service": "SERVICE",
+    "gateway": "GATEWAY",
+    "database": "DATABASE",
+    "infra": "INFRA",
+    "flow": "FLOW",
+    "step": "STEP",
+    "color": "COLOR",
 }
 
 # Full list of tokens the parser can receive
@@ -24,6 +31,11 @@ tokens = (
     "EQUALS",
     "LPAREN",
     "RPAREN",
+    "LBRACE",
+    "RBRACE",
+    "COLON",
+    "ARROW",
+    "ARROW_PROTO",
 ) + tuple(reserved.values())
 
 # Simple tokens: a single pattern, no extra logic
@@ -34,9 +46,23 @@ t_DIVIDE = r"/"
 t_EQUALS = r"="
 t_LPAREN = r"\("
 t_RPAREN = r"\)"
+t_LBRACE = r"\{"
+t_RBRACE = r"\}"
+t_COLON = r":"
 
 # Characters the lexer ignores entirely (spaces and tabs)
 t_ignore = " \t"
+
+
+def t_ARROW_PROTO(t):
+    r"--\[[a-zA-Z_][a-zA-Z_0-9]*\]-->"
+    t.value = t.value[3:-4]  # keep only the protocol name, e.g. "https"
+    return t
+
+
+def t_ARROW(t):
+    r"-->"
+    return t
 
 
 def t_STRING(t):
@@ -59,7 +85,7 @@ def t_ID(t):
 
 
 def t_COMMENT(t):
-    r"\#[^\n]*"
+    r"(\#|//)[^\n]*"
     pass  # comments produce no token
 
 
