@@ -1,4 +1,3 @@
-import numpy as np
 from manim import (
     DOWN,
     LEFT,
@@ -6,6 +5,7 @@ from manim import (
     TAU,
     UP,
     AnimationGroup,
+    ArcBetweenPoints,
     Arrow,
     Create,
     CurvedArrow,
@@ -30,10 +30,13 @@ class Connection(VGroup):
     Provides ready-made animations so scenes stay declarative.
     """
 
-    def __init__(self, arrow, label=None):
+    def __init__(self, arrow, label=None, spine=None):
         super().__init__(*[m for m in (arrow, label) if m is not None])
         self.arrow = arrow
         self.label = label
+        # Geometric path the packet follows; defaults to the arrow's chord so
+        # directly-constructed Connections keep working without a spine.
+        self.spine = spine if spine is not None else Line(arrow.get_start(), arrow.get_end())
 
     def grow(self) -> AnimationGroup:
         """Draw the arrow and fade the label in."""
@@ -46,10 +49,13 @@ class Connection(VGroup):
     def packet_flow(self, count: int = 1, run_time: float = 1.2) -> Succession:
         """Small glowing packets traveling along the arrow, one after another,
         simulating requests (HTTPS, gRPC, SQL...)."""
-        start = self.arrow.get_start()
-        end = self.arrow.get_end()
-        direction = (end - start) / np.linalg.norm(end - start)
-        path = Line(start, end - direction * 0.3)  # stop short of the tip
+        # Trim the spine's tip end proportionally so the packet stops short of
+        # the arrow tip on any path shape (straight or curved), preserving the
+        # ~0.3 unit gap the straight case used before.
+        length = max(self.spine.get_arc_length(), 1e-6)
+        trim = min(max(0.3 / length, 0.02), 0.5)
+        path = self.spine.copy()
+        path.pointwise_become_partial(self.spine, 0, 1 - trim)
         color = self.arrow.get_color()
 
         trips = []
@@ -120,6 +126,7 @@ class ConnectionBuilder:
 
         if self._curve_angle is not None:
             arrow = CurvedArrow(start, end, angle=self._curve_angle, color=color)
+            spine = ArcBetweenPoints(start, end, angle=self._curve_angle)
         else:
             arrow = Arrow(
                 start,
@@ -129,13 +136,14 @@ class ConnectionBuilder:
                 stroke_width=5,
                 max_tip_length_to_length_ratio=0.12,
             )
+            spine = Line(start, end)
 
         label = None
         if self._label is not None:
             label = Text(self._label, font_size=22, color=color)
             label.next_to(arrow, UP if horizontal else RIGHT, buff=0.25)
 
-        return Connection(arrow, label)
+        return Connection(arrow, label, spine=spine)
 
     def _anchors(self):
         """Pick the facing edges of source and target along the dominant axis."""
