@@ -1,0 +1,11 @@
+[tools]
+python = '3.13'
+uv = 'latest'
+
+[tasks.setup]
+description = "Install dependencies"
+run = "uv sync"
+
+[tasks.example]
+description = "Run a example script"
+run = "uv run ade examples/scene1.ade"
