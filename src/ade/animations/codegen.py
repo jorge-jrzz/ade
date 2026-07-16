@@ -1,13 +1,14 @@
 """Generates a runnable Manim script from a validated semantic.Model.
 
-The generated script drives the reusable builders in
-`ade.animations.components` (CardBuilder / BoundaryBuilder /
-ConnectionBuilder) and the `LIGHT` theme, so a scene rendered from a
-`.ade` file looks like the hand-written demos in
-`ade.animations.examples`. Two shapes are produced:
+Placement is decided upstream by the pure-Python layout pass (`ade.layout`):
+codegen consumes solved geometry and emits builder calls, so it is a dumb
+translator with no layout logic of its own. Two shapes are produced:
 
-* static architecture  -> components + boundaries + a flow of connections
-* timeline             -> an imperative sequence (show/add/move/connect/wait)
+* static architecture  -> components + boundaries + a flow of connections,
+  laid out once and scaled uniformly to fit the frame.
+* timeline             -> an imperative sequence (show/add/connect/wait) where
+  each graph-changing op re-solves the layout and existing nodes animate to
+  their new positions (incremental re-layout).
 
 Logo aliases (e.g. `nestjs`) are resolved to asset paths here via
 `assets.find_logo`, keeping the language layer free of Manim.
@@ -15,11 +16,12 @@ Logo aliases (e.g. `nestjs`) are resolved to asset paths here via
 
 import re
 
+from ade import layout
 from ade.animations.components.assets import find_logo
-from ade.lang.semantic import SemanticError, TLAdd, TLConnect, TLMove, TLShow, TLWait
+from ade.lang.semantic import SemanticError, TLAdd, TLConnect, TLShow, TLWait
 
 GENERATED_IMPORTS = [
-    "from manim import Scene, FadeIn, Group, SurroundingRectangle, Text, UP, RIGHT",
+    "from manim import Scene, FadeIn, Group, Transform",
     "from ade.animations.components import BoundaryBuilder, CardBuilder, CardKind, ConnectionBuilder",
     "from ade.animations.themes import LIGHT",
 ]
@@ -32,9 +34,8 @@ def _slugify(label, fallback="Architecture"):
     return "".join(word.capitalize() for word in words)
 
 
-def _pos(at):
-    x, y = at if at is not None else (0, 0)
-    return f"[{x}, {y}, 0]"
+def _coord(x, y):
+    return f"[{round(x, 3)}, {round(y, 3)}, 0]"
 
 
 def _resolve_logo(alias):
@@ -48,28 +49,25 @@ def _resolve_logo(alias):
         raise SemanticError(str(error)) from error
 
 
-def _card_expr(comp):
-    """The CardBuilder(...).build() expression for a component (no placement)."""
+def _card_expr(comp, size=None):
+    """The CardBuilder(...).build() expression for a component. `size` forces
+    the solved (width, height) so the render matches the layout estimate."""
     parts = [f"CardBuilder().label({comp.label!r})", f".kind(CardKind.{comp.card_kind.upper()})"]
     if comp.logo:
         parts.append(f".logo({_resolve_logo(comp.logo)!r})")
     if comp.sublabel:
         parts.append(f".sublabel({comp.sublabel!r})")
-    if comp.size is not None:
-        if isinstance(comp.size, tuple):
-            parts.append(f".size(width={comp.size[0]}, height={comp.size[1]})")
-        else:
-            parts.append(f".size(width={comp.size})")
+    if size is not None:
+        parts.append(f".size(width={round(size[0], 3)}, height={round(size[1], 3)})")
     parts.append(".build()")
     return "".join(parts)
 
 
-def _boundary_expr(boundary):
-    w, h = boundary.size
-    parts = [f"BoundaryBuilder().label({boundary.label!r})"]
-    if boundary.logo:
-        parts.append(f".logo({_resolve_logo(boundary.logo)!r})")
-    parts.append(f".size({w}, {h}).at({_pos(boundary.at)}).build()")
+def _boundary_expr(box):
+    parts = [f"BoundaryBuilder().label({box.label!r})"]
+    if box.logo:
+        parts.append(f".logo({_resolve_logo(box.logo)!r})")
+    parts.append(f".size({round(box.width, 3)}, {round(box.height, 3)}).at({_coord(box.x, box.y)}).build()")
     return "".join(parts)
 
 
@@ -84,6 +82,8 @@ def _connection_expr(src_var, dst_var, label, curved):
 
 
 def generate_manim_script(model):
+    """Return (script_source, scene_name, illegible). `illegible` is the
+    layout's below-threshold legibility flag, surfaced so the driver can warn."""
     if model.timelines:
         return _generate_timeline(model, model.timelines[0])
     return _generate_static(model)
@@ -92,73 +92,40 @@ def generate_manim_script(model):
 # --- static architecture ----------------------------------------------------
 
 def _generate_static(model):
+    result = layout.solve(model)
     scene_label = model.flows[0].label if model.flows else (
         model.boundaries[0].label if model.boundaries else None
     )
     scene_name = f"{_slugify(scene_label)}Scene"
 
-    explicit = any(c.at is not None for c in model.components.values()) or any(
-        b.at is not None for b in model.boundaries
-    )
-
-    body = _static_explicit(model) if explicit else _static_auto(model)
-    body += _flow_lines(model)
-    body.append("        self.wait(2)")
-
-    return _assemble(scene_name, body), scene_name
-
-
-def _static_explicit(model):
     lines = ["        cards = {}"]
-
-    # boundaries with an explicit box are drawn first (behind the cards)
-    boxed_later = []
-    for i, boundary in enumerate(model.boundaries):
-        if boundary.at is not None and isinstance(boundary.size, tuple):
-            lines.append(f"        boundary_{i} = {_boundary_expr(boundary)}")
-            lines.append(f"        self.play(FadeIn(boundary_{i}), run_time=1.5)")
-        else:
-            boxed_later.append((i, boundary))
-
     for name, comp in model.components.items():
-        lines.append(f"        cards[{name!r}] = {_card_expr(comp)}.move_to({_pos(comp.at)})")
+        g = result.nodes[name]
+        lines.append(
+            f"        cards[{name!r}] = {_card_expr(comp, (g.width, g.height))}.move_to({_coord(g.x, g.y)})"
+        )
+    for i, box in enumerate(result.boundaries):
+        lines.append(f"        boundary_{i} = {_boundary_expr(box)}")
+
+    # Group boundaries (behind) + cards and scale the whole drawing to fit the
+    # frame; connections are built afterwards so they anchor to scaled cards.
+    members = [f"boundary_{i}" for i in range(len(result.boundaries))]
+    members += [f"cards[{n!r}]" for n in model.components]
+    if members:
+        lines.append(f"        scene_group = Group({', '.join(members)})")
+        if result.scale < 0.999:
+            lines.append(f"        scene_group.scale({round(result.scale, 4)})")
+
+    for i in range(len(result.boundaries)):
+        lines.append(f"        self.play(FadeIn(boundary_{i}), run_time=1.2)")
 
     fade_ins = ", ".join(f"FadeIn(cards[{n!r}], scale=0.85)" for n in model.components)
     if fade_ins:
         lines.append(f"        self.play({fade_ins}, run_time=1.2)")
 
-    for i, boundary in boxed_later:
-        members = ", ".join(f"cards[{m!r}]" for m in boundary.members)
-        lines.append(f"        boundary_{i} = SurroundingRectangle(Group({members}), color=LIGHT.subtle, buff=0.5)")
-        lines.append(f"        self.play(FadeIn(boundary_{i}))")
-
-    return lines
-
-
-def _static_auto(model):
-    """Legacy auto-layout: box each infra group, arrange everything left→right."""
-    lines = ["        cards = {}"]
-    for name, comp in model.components.items():
-        lines.append(f"        cards[{name!r}] = {_card_expr(comp)}")
-
-    top_groups = []
-    for boundary in model.boundaries:
-        var = f"grp_{_slugify(boundary.label, 'infra').lower()}"
-        members = ", ".join(f"cards[{m!r}]" for m in boundary.members)
-        lines.append(f"        {var}_members = Group({members}).arrange(RIGHT, buff=1.0)")
-        lines.append(f"        {var}_box = SurroundingRectangle({var}_members, color=LIGHT.subtle, buff=0.5)")
-        lines.append(f"        {var}_label = Text({boundary.label!r}, font_size=20, color=LIGHT.ink).next_to({var}_box, UP, buff=0.15)")
-        lines.append(f"        {var} = Group({var}_members, {var}_box, {var}_label)")
-        top_groups.append(var)
-
-    for name, comp in model.components.items():
-        if comp.infra is None:
-            top_groups.append(f"cards[{name!r}]")
-
-    lines.append(f"        layout = Group({', '.join(top_groups)}).arrange(RIGHT, buff=2.0)")
-    lines.append("        self.play(FadeIn(layout))")
-    lines.append("        self.wait(0.5)")
-    return lines
+    lines += _flow_lines(model)
+    lines.append("        self.wait(2)")
+    return _assemble(scene_name, lines), scene_name, result.illegible
 
 
 def _flow_lines(model):
@@ -182,37 +149,91 @@ def _flow_lines(model):
     return lines
 
 
-# --- timeline ---------------------------------------------------------------
+# --- timeline (incremental re-layout) ---------------------------------------
 
 def _generate_timeline(model, timeline):
     scene_name = f"{_slugify(timeline.label)}Scene"
-    lines = ["        cards = {}"]
-    conn_count = 0
 
+    # One scale factor for the whole timeline, taken from the final snapshot so
+    # nothing resizes mid-animation.
+    final_visible, final_edges = {}, []
     for op in timeline.ops:
         if isinstance(op, TLShow):
             for name in op.names:
-                comp = model.components[name]
-                lines.append(f"        cards[{name!r}] = {_card_expr(comp)}.move_to({_pos(comp.at)})")
-            fades = ", ".join(f"FadeIn(cards[{n!r}], scale=0.85)" for n in op.names)
-            lines.append(f"        self.play({fades})")
+                final_visible[name] = model.components[name]
         elif isinstance(op, TLAdd):
-            comp = op.component
-            lines.append(f"        cards[{comp.name!r}] = {_card_expr(comp)}.move_to({_pos(comp.at)})")
-            lines.append(f"        self.play(FadeIn(cards[{comp.name!r}], scale=0.85))")
-        elif isinstance(op, TLMove):
-            lines.append(f"        self.play(cards[{op.name!r}].animate.move_to({_pos(op.to)}))")
+            final_visible[op.component.name] = op.component
         elif isinstance(op, TLConnect):
+            final_edges.append((op.source, op.target))
+    final = layout.solve_graph(final_visible, final_edges, [], model.direction)
+    scale = final.scale
+
+    def sc(v):
+        return round(v * scale, 4)
+
+    lines = ["        cards = {}"]
+    visible = {}          # name -> Component (compile-time replay)
+    edges = []
+    conns = []            # (var, src, tgt, label, curved)
+    conn_count = 0
+
+    def snapshot(newly):
+        """Solve the current graph, create new cards, move existing ones, and
+        re-anchor live connections."""
+        result = layout.solve_graph(visible, edges, [], model.direction)
+        newly = set(newly)
+        for name in newly:
+            g = result.nodes[name]
+            lines.append(
+                f"        cards[{name!r}] = "
+                f"{_card_expr(visible[name], (sc(g.width), sc(g.height)))}.move_to({_coord(sc(g.x), sc(g.y))})"
+            )
+
+        anims = []
+        moved = False
+        for name in visible:
+            g = result.nodes[name]
+            if name in newly:
+                anims.append(f"FadeIn(cards[{name!r}], scale=0.85)")
+            else:
+                anims.append(f"cards[{name!r}].animate.move_to({_coord(sc(g.x), sc(g.y))})")
+                moved = True
+        if anims:
+            lines.append(f"        self.play({', '.join(anims)})")
+
+        # Existing arrows now point at stale positions; rebuild each from the
+        # moved cards and Transform the live connection into it.
+        if moved and conns:
+            reanchor = []
+            for k, (var, src, tgt, label, curved) in enumerate(conns):
+                target = f"{var}_re{k}"
+                lines.append(f"        {target} = {_connection_expr(f'cards[{src!r}]', f'cards[{tgt!r}]', label, curved)}")
+                reanchor.append(f"Transform({var}, {target})")
+            lines.append(f"        self.play({', '.join(reanchor)}, run_time=0.5)")
+
+    for op in timeline.ops:
+        if isinstance(op, TLShow):
+            newly = [n for n in op.names if n not in visible]
+            for name in op.names:
+                visible[name] = model.components[name]
+            snapshot(newly)
+        elif isinstance(op, TLAdd):
+            visible[op.component.name] = op.component
+            snapshot([op.component.name])
+        elif isinstance(op, TLConnect):
+            edges.append((op.source, op.target))
+            snapshot([])  # positions may shift to make room for the new edge
             var = f"conn_{conn_count}"
             conn_count += 1
             expr = _connection_expr(f"cards[{op.source!r}]", f"cards[{op.target!r}]", op.label, op.curved)
             lines.append(f"        {var} = {expr}")
             lines.append(f"        self.play({var}.grow())")
+            conns.append((var, op.source, op.target, op.label, op.curved))
         elif isinstance(op, TLWait):
             lines.append("        self.wait(0.8)")
 
     lines.append("        self.wait(2)")
-    return _assemble(scene_name, lines), scene_name
+    return _assemble(scene_name, lines), scene_name, final.illegible
 
 
 # --- shared -----------------------------------------------------------------

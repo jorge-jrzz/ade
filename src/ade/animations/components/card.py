@@ -44,7 +44,13 @@ class CardBuilder:
         )
     """
 
+    # Auto-sizing bounds. These mirror the abstract estimates in
+    # `ade.layout` (MIN_CARD_W / MAX_CARD_W / MIN_CARD_H / CARD_PADDING) so a
+    # card renders at the size the layout pass reserved for it. Keep them in
+    # sync if either side changes.
     MIN_HEIGHT = 1.1
+    MIN_WIDTH = 2.6
+    MAX_WIDTH = 3.6
     PADDING = 0.6
 
     def __init__(self):
@@ -106,7 +112,9 @@ class CardBuilder:
 
         content = Group(*parts).arrange(DOWN, buff=0.25)
 
-        width = self._width or max(3.0, content.width + self.PADDING)
+        width = self._width or min(
+            self.MAX_WIDTH, max(self.MIN_WIDTH, content.width + self.PADDING)
+        )
         height = self._height or max(self.MIN_HEIGHT, content.height + self.PADDING)
         if content.width > width - 0.4:
             content.scale_to_fit_width(width - 0.4)
