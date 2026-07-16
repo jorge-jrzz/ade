@@ -33,10 +33,10 @@ class Component:
     name: str
     label: str
     color: str | None = None
-    logo: str | None = None       # raw alias/path; resolved in codegen
+    logo: str | None = None  # raw alias/path; resolved in codegen
     sublabel: str | None = None
-    card_kind: str = "service"    # CardKind value used by the builders
-    infra: str | None = None      # label of the boundary it belongs to, if any
+    card_kind: str = "service"  # CardKind value used by the builders
+    infra: str | None = None  # label of the boundary it belongs to, if any
     # Placement (x/y) and size are computed by ade.layout, never author-specified.
 
 
@@ -63,6 +63,7 @@ class Flow:
 
 
 # --- timeline ops -----------------------------------------------------------
+
 
 @dataclass
 class TLShow:
@@ -155,7 +156,9 @@ def validate(ast):
             continue
         name = node[2]
         if name in model.components:
-            raise SemanticError(f"line {node[5]}: component {name!r} is already declared")
+            raise SemanticError(
+                f"line {node[5]}: component {name!r} is already declared"
+            )
         model.components[name] = _make_component(node)
 
     # 2) infra boundaries and 3) flows
@@ -210,12 +213,16 @@ def _build_timeline(label, ops, top_level):
         if verb == "show":
             for name in op[1]:
                 if name not in known:
-                    raise SemanticError(f"timeline {label!r}: show references unknown component {name!r}")
+                    raise SemanticError(
+                        f"timeline {label!r}: show references unknown component {name!r}"
+                    )
             result.append(TLShow(op[1]))
         elif verb == "add":
             comp = _make_component(op[1])
             if comp.name in known:
-                raise SemanticError(f"timeline {label!r}: add re-declares component {comp.name!r}")
+                raise SemanticError(
+                    f"timeline {label!r}: add re-declares component {comp.name!r}"
+                )
             known.add(comp.name)
             result.append(TLAdd(comp))
         elif verb == "connect":

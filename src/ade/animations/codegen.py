@@ -52,7 +52,10 @@ def _resolve_logo(alias):
 def _card_expr(comp, size=None):
     """The CardBuilder(...).build() expression for a component. `size` forces
     the solved (width, height) so the render matches the layout estimate."""
-    parts = [f"CardBuilder().label({comp.label!r})", f".kind(CardKind.{comp.card_kind.upper()})"]
+    parts = [
+        f"CardBuilder().label({comp.label!r})",
+        f".kind(CardKind.{comp.card_kind.upper()})",
+    ]
     if comp.logo:
         parts.append(f".logo({_resolve_logo(comp.logo)!r})")
     if comp.sublabel:
@@ -67,7 +70,9 @@ def _boundary_expr(box):
     parts = [f"BoundaryBuilder().label({box.label!r})"]
     if box.logo:
         parts.append(f".logo({_resolve_logo(box.logo)!r})")
-    parts.append(f".size({round(box.width, 3)}, {round(box.height, 3)}).at({_coord(box.x, box.y)}).build()")
+    parts.append(
+        f".size({round(box.width, 3)}, {round(box.height, 3)}).at({_coord(box.x, box.y)}).build()"
+    )
     return "".join(parts)
 
 
@@ -91,10 +96,13 @@ def generate_manim_script(model):
 
 # --- static architecture ----------------------------------------------------
 
+
 def _generate_static(model):
     result = layout.solve(model)
-    scene_label = model.flows[0].label if model.flows else (
-        model.boundaries[0].label if model.boundaries else None
+    scene_label = (
+        model.flows[0].label
+        if model.flows
+        else (model.boundaries[0].label if model.boundaries else None)
     )
     scene_name = f"{_slugify(scene_label)}Scene"
 
@@ -136,7 +144,12 @@ def _flow_lines(model):
         lines.append(f"        # flow: {flow.label}")
         for step in flow.steps:
             var = f"conn_{len(conn_vars)}"
-            expr = _connection_expr(f"cards[{step.source!r}]", f"cards[{step.target!r}]", step.label, step.curved)
+            expr = _connection_expr(
+                f"cards[{step.source!r}]",
+                f"cards[{step.target!r}]",
+                step.label,
+                step.curved,
+            )
             lines.append(f"        {var} = {expr}")
             lines.append(f"        self.play({var}.grow())")
             conn_vars.append(var)
@@ -150,6 +163,7 @@ def _flow_lines(model):
 
 
 # --- timeline (incremental re-layout) ---------------------------------------
+
 
 def _generate_timeline(model, timeline):
     scene_name = f"{_slugify(timeline.label)}Scene"
@@ -172,9 +186,9 @@ def _generate_timeline(model, timeline):
         return round(v * scale, 4)
 
     lines = ["        cards = {}"]
-    visible = {}          # name -> Component (compile-time replay)
+    visible = {}  # name -> Component (compile-time replay)
     edges = []
-    conns = []            # (var, src, tgt, label, curved)
+    conns = []  # (var, src, tgt, label, curved)
     conn_count = 0
 
     def snapshot(newly):
@@ -196,7 +210,9 @@ def _generate_timeline(model, timeline):
             if name in newly:
                 anims.append(f"FadeIn(cards[{name!r}], scale=0.85)")
             else:
-                anims.append(f"cards[{name!r}].animate.move_to({_coord(sc(g.x), sc(g.y))})")
+                anims.append(
+                    f"cards[{name!r}].animate.move_to({_coord(sc(g.x), sc(g.y))})"
+                )
                 moved = True
         if anims:
             lines.append(f"        self.play({', '.join(anims)})")
@@ -207,7 +223,9 @@ def _generate_timeline(model, timeline):
             reanchor = []
             for k, (var, src, tgt, label, curved) in enumerate(conns):
                 target = f"{var}_re{k}"
-                lines.append(f"        {target} = {_connection_expr(f'cards[{src!r}]', f'cards[{tgt!r}]', label, curved)}")
+                lines.append(
+                    f"        {target} = {_connection_expr(f'cards[{src!r}]', f'cards[{tgt!r}]', label, curved)}"
+                )
                 reanchor.append(f"Transform({var}, {target})")
             lines.append(f"        self.play({', '.join(reanchor)}, run_time=0.5)")
 
@@ -225,7 +243,9 @@ def _generate_timeline(model, timeline):
             snapshot([])  # positions may shift to make room for the new edge
             var = f"conn_{conn_count}"
             conn_count += 1
-            expr = _connection_expr(f"cards[{op.source!r}]", f"cards[{op.target!r}]", op.label, op.curved)
+            expr = _connection_expr(
+                f"cards[{op.source!r}]", f"cards[{op.target!r}]", op.label, op.curved
+            )
             lines.append(f"        {var} = {expr}")
             lines.append(f"        self.play({var}.grow())")
             conns.append((var, op.source, op.target, op.label, op.curved))
@@ -237,6 +257,7 @@ def _generate_timeline(model, timeline):
 
 
 # --- shared -----------------------------------------------------------------
+
 
 def _assemble(scene_name, body_lines):
     header = list(GENERATED_IMPORTS) + [

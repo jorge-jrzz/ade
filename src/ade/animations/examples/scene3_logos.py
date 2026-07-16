@@ -8,10 +8,10 @@ ASSETS = Path(__file__).parent / "assets"
 # Modern "tech slide" theme with external technology logos
 # ---------------------------------------------------------------------------
 BACKGROUND_COLOR = "#FBFBFA"  # near white
-INK_COLOR = "#1F2937"         # main text
-SUBTLE_GRAY = "#8C9BAB"       # dashed cloud boundary
-CARD_STROKE = "#D0D5DB"       # card borders
-ACCENT_COLOR = "#F97316"      # vibrant orange for the data flow
+INK_COLOR = "#1F2937"  # main text
+SUBTLE_GRAY = "#8C9BAB"  # dashed cloud boundary
+CARD_STROKE = "#D0D5DB"  # card borders
+ACCENT_COLOR = "#F97316"  # vibrant orange for the data flow
 
 
 def logo(path, height=1.0):
@@ -68,7 +68,9 @@ class Scene3Logos(Scene):
         service = card(logo("languages/python.png", height=1.1), "Processing Service")
         service.move_to([3.2, -0.9, 0])
 
-        self.play(FadeIn(gateway, scale=0.85), FadeIn(service, scale=0.85), run_time=1.2)
+        self.play(
+            FadeIn(gateway, scale=0.85), FadeIn(service, scale=0.85), run_time=1.2
+        )
 
         # --- Step 3: connection and data flow ------------------------------
         arrow = Arrow(

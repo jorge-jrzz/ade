@@ -36,11 +36,17 @@ class Connection(VGroup):
         self.label = label
         # Geometric path the packet follows; defaults to the arrow's chord so
         # directly-constructed Connections keep working without a spine.
-        self.spine = spine if spine is not None else Line(arrow.get_start(), arrow.get_end())
+        self.spine = (
+            spine if spine is not None else Line(arrow.get_start(), arrow.get_end())
+        )
 
     def grow(self) -> AnimationGroup:
         """Draw the arrow and fade the label in."""
-        intro = GrowArrow(self.arrow) if isinstance(self.arrow, Arrow) else Create(self.arrow)
+        intro = (
+            GrowArrow(self.arrow)
+            if isinstance(self.arrow, Arrow)
+            else Create(self.arrow)
+        )
         anims = [intro]
         if self.label is not None:
             anims.append(FadeIn(self.label, shift=UP * 0.1))
@@ -119,7 +125,9 @@ class ConnectionBuilder:
 
     def build(self) -> Connection:
         if self._source is None or self._target is None:
-            raise ValueError("a Connection needs endpoints: call .between(source, target)")
+            raise ValueError(
+                "a Connection needs endpoints: call .between(source, target)"
+            )
 
         color = self._color or self._theme.flow
         start, end, horizontal = self._anchors()
@@ -151,8 +159,20 @@ class ConnectionBuilder:
         delta = t.get_center() - s.get_center()
         if abs(delta[0]) >= abs(delta[1]):  # mostly horizontal
             if delta[0] >= 0:
-                return s.get_right() + RIGHT * self._gap, t.get_left() + LEFT * self._gap, True
-            return s.get_left() + LEFT * self._gap, t.get_right() + RIGHT * self._gap, True
+                return (
+                    s.get_right() + RIGHT * self._gap,
+                    t.get_left() + LEFT * self._gap,
+                    True,
+                )
+            return (
+                s.get_left() + LEFT * self._gap,
+                t.get_right() + RIGHT * self._gap,
+                True,
+            )
         if delta[1] <= 0:  # target below source
-            return s.get_bottom() + DOWN * self._gap, t.get_top() + UP * self._gap, False
+            return (
+                s.get_bottom() + DOWN * self._gap,
+                t.get_top() + UP * self._gap,
+                False,
+            )
         return s.get_top() + UP * self._gap, t.get_bottom() + DOWN * self._gap, False

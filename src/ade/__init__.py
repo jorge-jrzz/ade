@@ -69,8 +69,16 @@ def render_architecture(model, source_path):
     # never clutters the project root. No -p: previewing needs a desktop opener
     # (xdg-open), which isn't available in headless environments.
     subprocess.run(
-        ["uv", "run", "manim", "-ql", "--media_dir", str(BUILD_DIR),
-         str(script_path), scene_name],
+        [
+            "uv",
+            "run",
+            "manim",
+            "-ql",
+            "--media_dir",
+            str(BUILD_DIR),
+            str(script_path),
+            scene_name,
+        ],
         check=True,
     )
 

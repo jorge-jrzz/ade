@@ -25,28 +25,28 @@ from dataclasses import dataclass, field
 # Abstract text metrics, calibrated against Manim's Text widths so the layout
 # estimate agrees with what CardBuilder renders. Kept here (not imported) to
 # keep this module Manim-free; if CardBuilder's fonts/padding change, retune.
-CHAR_W = 0.19          # ~width per label char at font_size 24
+CHAR_W = 0.19  # ~width per label char at font_size 24
 SUBLABEL_CHAR_W = 0.15  # ~width per sublabel char at font_size 18
-LABEL_H = 0.26          # label line height (font_size 24)
-SUBLABEL_H = 0.24       # sublabel line height (font_size 18)
-LOGO_H = 1.1            # CardBuilder default logo height
-LOGO_W = 1.1            # logos are ~square once rasterized
-CONTENT_GAP = 0.25      # CardBuilder content arrange(DOWN, buff=0.25)
-CARD_PADDING = 0.6      # CardBuilder.PADDING
-MIN_CARD_W = 2.6        # floor so short cards still read
-MAX_CARD_W = 3.6        # cap; CardBuilder scales long labels to fit inside
-MIN_CARD_H = 1.1        # CardBuilder.MIN_HEIGHT
+LABEL_H = 0.26  # label line height (font_size 24)
+SUBLABEL_H = 0.24  # sublabel line height (font_size 18)
+LOGO_H = 1.1  # CardBuilder default logo height
+LOGO_W = 1.1  # logos are ~square once rasterized
+CONTENT_GAP = 0.25  # CardBuilder content arrange(DOWN, buff=0.25)
+CARD_PADDING = 0.6  # CardBuilder.PADDING
+MIN_CARD_W = 2.6  # floor so short cards still read
+MAX_CARD_W = 3.6  # cap; CardBuilder scales long labels to fit inside
+MIN_CARD_H = 1.1  # CardBuilder.MIN_HEIGHT
 
 # --- SPACING ----------------------------------------------------------------
-RANK_GAP = 1.7          # gap along the main axis between adjacent layers
-SIBLING_GAP = 0.8       # gap along the cross axis between nodes in one layer
-BOUNDARY_PAD = 0.5      # padding between an infra box and its members
+RANK_GAP = 1.7  # gap along the main axis between adjacent layers
+SIBLING_GAP = 0.8  # gap along the cross axis between nodes in one layer
+BOUNDARY_PAD = 0.5  # padding between an infra box and its members
 BOUNDARY_LABEL_BAND = 0.7  # extra top room for the boundary label/logo
 
 # --- CANVAS -----------------------------------------------------------------
-FRAME_W = 14.22         # Manim 16:9 frame width (scene units)
+FRAME_W = 14.22  # Manim 16:9 frame width (scene units)
 FRAME_H = 8.0
-FRAME_MARGIN = 0.6      # keep content off the very edge
+FRAME_MARGIN = 0.6  # keep content off the very edge
 USABLE_W = FRAME_W - FRAME_MARGIN
 USABLE_H = FRAME_H - FRAME_MARGIN
 LEGIBILITY_THRESHOLD = 0.7  # below this scale, text is likely illegible
@@ -72,14 +72,15 @@ class BoundaryGeom:
 
 @dataclass
 class LayoutResult:
-    nodes: dict = field(default_factory=dict)        # name -> NodeGeom
-    boundaries: list = field(default_factory=list)   # list[BoundaryGeom]
+    nodes: dict = field(default_factory=dict)  # name -> NodeGeom
+    boundaries: list = field(default_factory=list)  # list[BoundaryGeom]
     scale: float = 1.0
     illegible: bool = False
     direction: str = "LR"
 
 
 # --- card size estimation (task 1.4) ----------------------------------------
+
 
 def estimate_card_size(comp):
     """Estimate a card's (width, height) from its content, mirroring
@@ -104,6 +105,7 @@ def estimate_card_size(comp):
 
 
 # --- ranking (task 1.2) -----------------------------------------------------
+
 
 def _rank_nodes(names, edges):
     """Longest-path layering. Cycles are broken by dropping DFS back-edges
@@ -160,6 +162,7 @@ def _rank_nodes(names, edges):
 
 # --- in-rank ordering (task 1.3) --------------------------------------------
 
+
 def _order_ranks(names, rank, preds, components):
     """Barycenter ordering within each rank; `external` cards bias to the rank
     start, and members of the same infra are kept adjacent (contiguity)."""
@@ -177,6 +180,7 @@ def _order_ranks(names, rank, preds, components):
         if r == min(by_rank):
             keyed = sorted(group, key=lambda n: (0 if is_external(n) else 1, decl[n]))
         else:
+
             def bary(n):
                 ps = preds.get(n, [])
                 if not ps:
@@ -211,6 +215,7 @@ def _group_clusters(seq, components):
 
 
 # --- coordinate assignment (task 1.5) ---------------------------------------
+
 
 def _assign_coords(by_rank, sizes, direction):
     """Place ranks along the main axis (LR: x, TD: y) and stack siblings along
@@ -269,9 +274,7 @@ def _boundary_boxes(boundaries, nodes):
         height = (ys1 - ys0) + 2 * BOUNDARY_PAD + BOUNDARY_LABEL_BAND
         cx = (xs0 + xs1) / 2
         cy = (ys0 + ys1) / 2 + BOUNDARY_LABEL_BAND / 2
-        boxes.append(
-            BoundaryGeom(boundary.label, boundary.logo, cx, cy, width, height)
-        )
+        boxes.append(BoundaryGeom(boundary.label, boundary.logo, cx, cy, width, height))
     return boxes
 
 
@@ -305,6 +308,7 @@ def _fit_scale(width, height):
 
 
 # --- public API -------------------------------------------------------------
+
 
 def solve_graph(components, edges, boundaries, direction="LR"):
     """Solve a layout for an explicit graph (used directly for timeline

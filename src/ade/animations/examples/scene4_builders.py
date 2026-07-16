@@ -1,6 +1,11 @@
 from manim import *
 
-from ade.animations.components import BoundaryBuilder, CardBuilder, CardKind, ConnectionBuilder
+from ade.animations.components import (
+    BoundaryBuilder,
+    CardBuilder,
+    CardKind,
+    ConnectionBuilder,
+)
 from ade.animations.themes import LIGHT
 
 
@@ -66,7 +71,9 @@ class Scene4Builders(Scene):
 
         # --- Connections and data flow ----------------------------------------
         https = ConnectionBuilder().between(client, gateway).label("HTTPS").build()
-        process = ConnectionBuilder().between(gateway, service).label("Process Data").build()
+        process = (
+            ConnectionBuilder().between(gateway, service).label("Process Data").build()
+        )
         sql = ConnectionBuilder().between(service, database).label("SQL").build()
 
         self.play(https.grow())

@@ -65,12 +65,16 @@ class BoundaryBuilder:
         return self
 
     def build(self) -> Boundary:
-        frame = RoundedRectangle(corner_radius=0.3, width=self._width, height=self._height)
+        frame = RoundedRectangle(
+            corner_radius=0.3, width=self._width, height=self._height
+        )
         frame.move_to(self._position)
         frame.set_stroke(opacity=0)  # geometry reference only
 
         visible = frame.copy().set_stroke(self._theme.subtle, width=2.5, opacity=1.0)
-        outline = DashedVMobject(visible, num_dashes=self._num_dashes, dashed_ratio=0.55)
+        outline = DashedVMobject(
+            visible, num_dashes=self._num_dashes, dashed_ratio=0.55
+        )
 
         header_parts = []
         if self._logo_path is not None:

@@ -56,7 +56,7 @@ precedence = (
 
 def p_program(p):
     """program : program statement
-               | statement"""
+    | statement"""
     if len(p) == 3:
         p[0] = p[1] + [p[2]]
     else:
@@ -65,11 +65,12 @@ def p_program(p):
 
 # --- components -------------------------------------------------------------
 
+
 def p_component_kind(p):
     """component_kind : SERVICE
-                      | GATEWAY
-                      | DATABASE
-                      | EXTERNAL"""
+    | GATEWAY
+    | DATABASE
+    | EXTERNAL"""
     p[0] = p.slice[1].type.lower()
 
 
@@ -89,6 +90,7 @@ def p_statement_component_block(p):
 
 
 # --- attribute blocks -------------------------------------------------------
+
 
 def p_attr_list_multi(p):
     """attr_list : attr_list attr"""
@@ -113,10 +115,10 @@ def p_attr_kind(p):
 
 def p_kind_value(p):
     """kind_value : SERVICE
-                  | GATEWAY
-                  | DATABASE
-                  | EXTERNAL
-                  | INFRA"""
+    | GATEWAY
+    | DATABASE
+    | EXTERNAL
+    | INFRA"""
     p[0] = p.slice[1].type.lower()
 
 
@@ -132,11 +134,12 @@ def p_attr_sublabel(p):
 
 def p_logo_ref(p):
     """logo_ref : ID
-                | STRING"""
+    | STRING"""
     p[0] = p[1]
 
 
 # --- infra (boundary) -------------------------------------------------------
+
 
 def p_statement_infra(p):
     """statement : INFRA STRING LBRACE infra_item_list RBRACE"""
@@ -170,6 +173,7 @@ def p_infra_item_logo(p):
 
 
 # --- flow / steps -----------------------------------------------------------
+
 
 def p_statement_flow(p):
     """statement : FLOW STRING LBRACE step_list RBRACE"""
@@ -212,6 +216,7 @@ def p_step_opt_empty(p):
 
 
 # --- timeline (imperative animation) ---------------------------------------
+
 
 def p_statement_timeline(p):
     """statement : TIMELINE STRING LBRACE tl_list RBRACE"""
@@ -265,12 +270,14 @@ def p_id_csv_single(p):
 
 # --- layout direction -------------------------------------------------------
 
+
 def p_statement_direction(p):
     """statement : DIRECTION COLON ID"""
     p[0] = ("direction", p[3], p.lineno(1))
 
 
 # --- classic statements / expressions --------------------------------------
+
 
 def p_statement_sit(p):
     """statement : SIT LPAREN expression RPAREN"""
@@ -284,9 +291,9 @@ def p_statement_assign(p):
 
 def p_expression_binop(p):
     """expression : expression PLUS expression
-                  | expression MINUS expression
-                  | expression TIMES expression
-                  | expression DIVIDE expression"""
+    | expression MINUS expression
+    | expression TIMES expression
+    | expression DIVIDE expression"""
     p[0] = ("binop", p[2], p[1], p[3])
 
 
@@ -331,7 +338,7 @@ if __name__ == "__main__":
     # Quick check: print the AST of a small program that exercises the new syntax
     build_lexer()
     parser = build_parser()
-    sample = '''
+    sample = """
     direction: LR
     external client "Web Client"
     gateway api "API Gateway" { logo: nestjs }
@@ -347,6 +354,6 @@ if __name__ == "__main__":
         connect api --> web2
         wait
     }
-    '''
+    """
     for node in parser.parse(sample):
         print(node)

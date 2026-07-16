@@ -29,10 +29,11 @@ precedence = (
 
 def p_program(p):
     """program : program statement
-               | statement"""
+    | statement"""
 
 
 # --- estatutos clasicos -----------------------------------------------------
+
 
 def p_statement_sit(p):
     """statement : SIT LPAREN expression RPAREN"""
@@ -46,6 +47,7 @@ def p_statement_assign(p):
 
 # --- direccion de layout ----------------------------------------------------
 
+
 def p_statement_direction(p):
     """statement : DIRECTION COLON ID"""
     print(f"Oracion reconocida: direccion de layout {p[3]}")
@@ -53,11 +55,12 @@ def p_statement_direction(p):
 
 # --- componentes ------------------------------------------------------------
 
+
 def p_component_kind(p):
     """component_kind : SERVICE
-                      | GATEWAY
-                      | DATABASE
-                      | EXTERNAL"""
+    | GATEWAY
+    | DATABASE
+    | EXTERNAL"""
     p[0] = p.slice[1].type.lower()
 
 
@@ -68,15 +71,16 @@ def p_statement_component_plain(p):
 
 def p_statement_component_color(p):
     """statement : component_kind ID STRING COLOR COLON ID"""
-    print(f'Oracion reconocida: declaracion de {p[1]} {p[2]!r} color={p[6]}')
+    print(f"Oracion reconocida: declaracion de {p[1]} {p[2]!r} color={p[6]}")
 
 
 def p_statement_component_block(p):
     """statement : component_kind ID STRING LBRACE attr_list RBRACE"""
-    print(f'Oracion reconocida: declaracion de {p[1]} {p[2]!r} con bloque de atributos')
+    print(f"Oracion reconocida: declaracion de {p[1]} {p[2]!r} con bloque de atributos")
 
 
 # --- bloque de atributos ----------------------------------------------------
+
 
 def p_attr_list_multi(p):
     """attr_list : attr_list attr"""
@@ -96,10 +100,10 @@ def p_attr_kind(p):
 
 def p_kind_value(p):
     """kind_value : SERVICE
-                  | GATEWAY
-                  | DATABASE
-                  | EXTERNAL
-                  | INFRA"""
+    | GATEWAY
+    | DATABASE
+    | EXTERNAL
+    | INFRA"""
 
 
 def p_attr_logo(p):
@@ -112,10 +116,11 @@ def p_attr_sublabel(p):
 
 def p_logo_ref(p):
     """logo_ref : ID
-                | STRING"""
+    | STRING"""
 
 
 # --- bloque infra -----------------------------------------------------------
+
 
 def p_statement_infra(p):
     """statement : INFRA STRING LBRACE infra_item_list RBRACE"""
@@ -139,6 +144,7 @@ def p_infra_item_logo(p):
 
 
 # --- bloque flow / steps ----------------------------------------------------
+
 
 def p_statement_flow(p):
     """statement : FLOW STRING LBRACE step_list RBRACE"""
@@ -178,6 +184,7 @@ def p_step_opt_empty(p):
 
 
 # --- bloque timeline --------------------------------------------------------
+
 
 def p_statement_timeline(p):
     """statement : TIMELINE STRING LBRACE tl_list RBRACE"""
@@ -222,11 +229,12 @@ def p_id_csv_single(p):
 
 # --- expresiones ------------------------------------------------------------
 
+
 def p_expression_binop(p):
     """expression : expression PLUS expression
-                  | expression MINUS expression
-                  | expression TIMES expression
-                  | expression DIVIDE expression"""
+    | expression MINUS expression
+    | expression TIMES expression
+    | expression DIVIDE expression"""
 
 
 def p_expression_group(p):
@@ -251,7 +259,9 @@ def p_empty(p):
 
 def p_error(p):
     if p:
-        print(f"Error sintactico en {p.value!r} (linea {p.lineno}): oracion no reconocida")
+        print(
+            f"Error sintactico en {p.value!r} (linea {p.lineno}): oracion no reconocida"
+        )
     else:
         print("Error sintactico: fin de archivo inesperado")
 

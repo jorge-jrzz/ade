@@ -4,10 +4,10 @@ from manim import *
 # Consistent color palette for the architecture components
 # ---------------------------------------------------------------------------
 BACKGROUND_COLOR = "#F4F4F2"  # very light gray background
-WEB_COLOR = "#7EC8E3"         # light blue  -> web servers
-DB_COLOR = "#1F3A93"          # dark blue   -> database
-ARROW_COLOR = "#2E6FDB"       # blue        -> data flow
-STROKE_COLOR = "#333333"      # borders and dark text
+WEB_COLOR = "#7EC8E3"  # light blue  -> web servers
+DB_COLOR = "#1F3A93"  # dark blue   -> database
+ARROW_COLOR = "#2E6FDB"  # blue        -> data flow
+STROKE_COLOR = "#333333"  # borders and dark text
 
 
 def component(label, box_color, text_color=STROKE_COLOR, width=3.0, height=1.2):

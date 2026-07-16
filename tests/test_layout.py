@@ -12,8 +12,9 @@ from ade.lang.semantic import Boundary, Component, Flow, Model, Step
 
 
 def _comp(name, label, kind="service", logo=None, sublabel=None, infra=None):
-    c = Component(kind=kind, name=name, label=label, card_kind=kind,
-                  logo=logo, sublabel=sublabel)
+    c = Component(
+        kind=kind, name=name, label=label, card_kind=kind, logo=logo, sublabel=sublabel
+    )
     c.infra = infra
     return c
 
@@ -42,6 +43,7 @@ def _pipeline_model():
 
 # --- layering ---------------------------------------------------------------
 
+
 def test_pipeline_lays_out_in_flow_order():
     result = layout.solve(_pipeline_model())
     xs = {n: g.x for n, g in result.nodes.items()}
@@ -67,8 +69,13 @@ def test_cyclic_flow_terminates():
         _comp("auth", "Auth Service"),
         _comp("db", "Users DB", "database"),
     ]
-    edges = [("frontend", "api"), ("api", "auth"), ("auth", "db"),
-             ("db", "auth"), ("auth", "frontend")]
+    edges = [
+        ("frontend", "api"),
+        ("api", "auth"),
+        ("auth", "db"),
+        ("db", "auth"),
+        ("auth", "frontend"),
+    ]
     result = layout.solve(_model(comps, edges))
     assert set(result.nodes) == {"frontend", "api", "auth", "db"}
     xs = {n: g.x for n, g in result.nodes.items()}
@@ -79,11 +86,13 @@ def test_cyclic_flow_terminates():
 def test_deterministic():
     a = layout.solve(_pipeline_model())
     b = layout.solve(_pipeline_model())
-    assert {n: (g.x, g.y, g.width, g.height) for n, g in a.nodes.items()} == \
-           {n: (g.x, g.y, g.width, g.height) for n, g in b.nodes.items()}
+    assert {n: (g.x, g.y, g.width, g.height) for n, g in a.nodes.items()} == {
+        n: (g.x, g.y, g.width, g.height) for n, g in b.nodes.items()
+    }
 
 
 # --- clusters ---------------------------------------------------------------
+
 
 def test_cluster_members_enclosed_others_outside():
     comps = [
@@ -102,8 +111,12 @@ def test_cluster_members_enclosed_others_outside():
 
     def inside(n):
         g = result.nodes[n]
-        return left <= g.x - g.width / 2 and g.x + g.width / 2 <= right and \
-            bottom <= g.y - g.height / 2 and g.y + g.height / 2 <= top
+        return (
+            left <= g.x - g.width / 2
+            and g.x + g.width / 2 <= right
+            and bottom <= g.y - g.height / 2
+            and g.y + g.height / 2 <= top
+        )
 
     assert inside("proc") and inside("db")
     assert not inside("client") and not inside("api")
@@ -111,23 +124,25 @@ def test_cluster_members_enclosed_others_outside():
 
 # --- direction --------------------------------------------------------------
 
+
 def test_lr_advances_horizontally():
     result = layout.solve(_pipeline_model(), direction="LR")
     ys = [g.y for g in result.nodes.values()]
-    assert max(ys) - min(ys) < 1e-6            # single horizontal row
+    assert max(ys) - min(ys) < 1e-6  # single horizontal row
     xs = [g.x for g in result.nodes.values()]
-    assert max(xs) - min(xs) > 1.0             # spread along x
+    assert max(xs) - min(xs) > 1.0  # spread along x
 
 
 def test_td_advances_vertically():
     result = layout.solve(_pipeline_model(), direction="TD")
     xs = [g.x for g in result.nodes.values()]
-    assert max(xs) - min(xs) < 1e-6            # single vertical column
+    assert max(xs) - min(xs) < 1e-6  # single vertical column
     ys = {n: g.y for n, g in result.nodes.items()}
     assert ys["client"] > ys["api"] > ys["proc"] > ys["db"]  # top -> bottom
 
 
 # --- sizing -----------------------------------------------------------------
+
 
 def test_long_labels_get_wider_cards():
     short = _comp("db", "DB")
@@ -142,6 +157,7 @@ def test_logo_and_sublabel_grow_height():
 
 
 # --- canvas fitting ---------------------------------------------------------
+
 
 def test_small_scene_not_scaled():
     comps = [_comp("a", "A"), _comp("b", "B")]
