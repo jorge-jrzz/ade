@@ -6,38 +6,39 @@ tuples. Classic nodes:
     ('number', n), ('string', s), ('var', name)
 
 Architecture nodes:
+    ('direction', value, lineno)          value : LR | TD (validated in semantic)
     ('component', kind, name, label, attrs, lineno)
         kind  : service | gateway | database | external
-        attrs : dict with any of color/kind/logo/sublabel/at/size
+        attrs : dict with any of color/kind/logo/sublabel
     ('infra', label, attrs, [members...], lineno)
-        attrs : dict with any of logo/at/size
+        attrs : dict with any of logo
     ('flow', label, [steps...], lineno)
         step = ('step', number, source, label_or_None, target, curved, lineno)
     ('timeline', label, [ops...], lineno)
-        op = ('show', [ids]) | ('add', component_node) | ('move', id, (x, y))
+        op = ('show', [ids]) | ('add', component_node)
            | ('connect', src, label_or_None, target, curved) | ('wait',)
 
-Attribute values: at -> (x, y); size -> width or (width, height).
+Placement is fully automatic (see ade.layout): the language carries no
+coordinates or sizes — only the optional top-level `direction:` hint.
 
 Grammar (informal):
 
     program        : statement*
     statement      : SIT ( expression )
                    | ID EQUALS expression
+                   | DIRECTION COLON ID
                    | component_kind ID STRING [ COLOR COLON ID | { attr* } ]
                    | INFRA STRING { infra_item* }
                    | FLOW STRING { step* }
                    | TIMELINE STRING { tl_stmt* }
     component_kind : SERVICE | GATEWAY | DATABASE | EXTERNAL
     attr           : (COLOR|KIND) COLON ID | LOGO COLON logo_ref
-                   | SUBLABEL COLON STRING | AT COLON coord | SIZE COLON size_val
-    infra_item     : ID | LOGO COLON logo_ref | AT COLON coord | SIZE COLON size_val
+                   | SUBLABEL COLON STRING
+    infra_item     : ID | LOGO COLON logo_ref
     step           : STEP NUMBER COLON ID arrow ID [CURVED]
     tl_stmt        : SHOW id_csv | ADD component_kind ID STRING [{ attr* }]
-                   | MOVE ID TO coord | CONNECT ID arrow ID [CURVED] | WAIT
+                   | CONNECT ID arrow ID [CURVED] | WAIT
     arrow          : ARROW | ARROW_PROTO
-    coord          : ( signed_number , signed_number )
-    size_val       : signed_number | coord
     expression     : expression (+|-|*|/) expression | ( expression )
                    | NUMBER | STRING | ID
 """
@@ -129,16 +130,6 @@ def p_attr_sublabel(p):
     p[0] = ("sublabel", p[3])
 
 
-def p_attr_at(p):
-    """attr : AT COLON coord"""
-    p[0] = ("at", p[3])
-
-
-def p_attr_size(p):
-    """attr : SIZE COLON size_val"""
-    p[0] = ("size", p[3])
-
-
 def p_logo_ref(p):
     """logo_ref : ID
                 | STRING"""
@@ -176,16 +167,6 @@ def p_infra_item_member(p):
 def p_infra_item_logo(p):
     """infra_item : LOGO COLON logo_ref"""
     p[0] = ("logo", p[3])
-
-
-def p_infra_item_at(p):
-    """infra_item : AT COLON coord"""
-    p[0] = ("at", p[3])
-
-
-def p_infra_item_size(p):
-    """infra_item : SIZE COLON size_val"""
-    p[0] = ("size", p[3])
 
 
 # --- flow / steps -----------------------------------------------------------
@@ -262,11 +243,6 @@ def p_tl_add_block(p):
     p[0] = ("add", ("component", p[2], p[3], p[4], p[6], p.lineno(3)))
 
 
-def p_tl_move(p):
-    """tl_stmt : MOVE ID TO coord"""
-    p[0] = ("move", p[2], p[4])
-
-
 def p_tl_connect(p):
     """tl_stmt : CONNECT ID arrow ID step_opt"""
     p[0] = ("connect", p[2], p[3], p[4], p[5])
@@ -287,31 +263,11 @@ def p_id_csv_single(p):
     p[0] = [p[1]]
 
 
-# --- coordinates / sizes ----------------------------------------------------
+# --- layout direction -------------------------------------------------------
 
-def p_coord(p):
-    """coord : LPAREN signed_number COMMA signed_number RPAREN"""
-    p[0] = (p[2], p[4])
-
-
-def p_size_val_single(p):
-    """size_val : signed_number"""
-    p[0] = p[1]
-
-
-def p_size_val_pair(p):
-    """size_val : coord"""
-    p[0] = p[1]
-
-
-def p_signed_number_pos(p):
-    """signed_number : NUMBER"""
-    p[0] = p[1]
-
-
-def p_signed_number_neg(p):
-    """signed_number : MINUS NUMBER"""
-    p[0] = -p[2]
+def p_statement_direction(p):
+    """statement : DIRECTION COLON ID"""
+    p[0] = ("direction", p[3], p.lineno(1))
 
 
 # --- classic statements / expressions --------------------------------------
@@ -376,18 +332,18 @@ if __name__ == "__main__":
     build_lexer()
     parser = build_parser()
     sample = '''
-    external client "Web Client" { at: (-4.8, 1.8) }
-    gateway api "API Gateway" { logo: nestjs  at: (-4.8, -1.3) }
-    database db "PostgreSQL" { logo: postgres  sublabel: "Primary"  at: (5.1, -1.3)  size: 2.8 }
-    infra "AWS Cloud" { logo: aws  at: (3.15, -0.4)  size: (7.2, 5.6)  api  db }
+    direction: LR
+    external client "Web Client"
+    gateway api "API Gateway" { logo: nestjs }
+    database db "PostgreSQL" { logo: postgres  sublabel: "Primary" }
+    infra "AWS Cloud" { logo: aws  api  db }
     flow "Login" {
         step 1: client --[HTTPS]--> api
         step 2: api --[SQL]--> db curved
     }
     timeline "Scaling" {
         show client, api
-        move client to (-4.6, -0.8)
-        add service web2 "Web Server 2" { at: (-1.4, -0.8) }
+        add service web2 "Web Server 2"
         connect api --> web2
         wait
     }

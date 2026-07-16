@@ -18,19 +18,17 @@ reserved = {
     "flow": "FLOW",
     "step": "STEP",
     "color": "COLOR",
+    # layout direction: LR (default) | TD
+    "direction": "DIRECTION",
     # component / boundary attributes
     "logo": "LOGO",
     "sublabel": "SUBLABEL",
-    "at": "AT",
-    "size": "SIZE",
     "kind": "KIND",
     # timeline sub-language
     "timeline": "TIMELINE",
     "show": "SHOW",
     "add": "ADD",
-    "move": "MOVE",
     "connect": "CONNECT",
-    "to": "TO",
     "wait": "WAIT",
     "curved": "CURVED",
 }

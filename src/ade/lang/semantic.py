@@ -35,18 +35,15 @@ class Component:
     color: str | None = None
     logo: str | None = None       # raw alias/path; resolved in codegen
     sublabel: str | None = None
-    at: tuple | None = None       # (x, y) or None -> auto-layout
-    size: object = None           # float (width) | (width, height) | None
     card_kind: str = "service"    # CardKind value used by the builders
     infra: str | None = None      # label of the boundary it belongs to, if any
+    # Placement (x/y) and size are computed by ade.layout, never author-specified.
 
 
 @dataclass
 class Boundary:
     label: str
     logo: str | None = None
-    at: tuple | None = None
-    size: tuple | None = None
     members: list = field(default_factory=list)
 
 
@@ -78,12 +75,6 @@ class TLAdd:
 
 
 @dataclass
-class TLMove:
-    name: str
-    to: tuple
-
-
-@dataclass
 class TLConnect:
     source: str
     label: str | None
@@ -102,12 +93,16 @@ class Timeline:
     ops: list
 
 
+VALID_DIRECTIONS = {"LR", "TD"}
+
+
 @dataclass
 class Model:
     components: dict = field(default_factory=dict)
     boundaries: list = field(default_factory=list)
     flows: list = field(default_factory=list)
     timelines: list = field(default_factory=list)
+    direction: str = "LR"  # layout main axis: LR (default) | TD
 
     def has_architecture(self):
         return bool(self.components or self.timelines)
@@ -131,8 +126,6 @@ def _make_component(node):
         color=attrs.get("color"),
         logo=attrs.get("logo"),
         sublabel=attrs.get("sublabel"),
-        at=attrs.get("at"),
-        size=attrs.get("size"),
         card_kind=_card_kind(dsl_kind, attrs, lineno),
     )
 
@@ -140,6 +133,21 @@ def _make_component(node):
 def validate(ast):
     """Build and validate a Model from the raw AST. Raises SemanticError on failure."""
     model = Model()
+
+    # 0) layout direction (at most one)
+    direction_seen = False
+    for node in ast:
+        if node[0] != "direction":
+            continue
+        _, value, lineno = node
+        if value not in VALID_DIRECTIONS:
+            raise SemanticError(
+                f"line {lineno}: unknown direction {value!r} (expected one of {sorted(VALID_DIRECTIONS)})"
+            )
+        if direction_seen:
+            raise SemanticError(f"line {lineno}: duplicate direction: statement")
+        model.direction = value
+        direction_seen = True
 
     # 1) top-level component declarations
     for node in ast:
@@ -162,8 +170,7 @@ def validate(ast):
                     )
                 model.components[name].infra = label
             model.boundaries.append(
-                Boundary(label=label, logo=attrs.get("logo"), at=attrs.get("at"),
-                         size=attrs.get("size"), members=members)
+                Boundary(label=label, logo=attrs.get("logo"), members=members)
             )
         elif kind == "flow":
             _, label, raw_steps, lineno = node
@@ -195,7 +202,7 @@ def _build_flow(label, raw_steps, components):
 
 def _build_timeline(label, ops, top_level):
     """Timelines may reference top-level components (via `show`) and introduce
-    new ones (via `add`); both become valid targets for move/connect."""
+    new ones (via `add`); both become valid targets for connect."""
     known = set(top_level)
     result = []
     for op in ops:
@@ -211,11 +218,6 @@ def _build_timeline(label, ops, top_level):
                 raise SemanticError(f"timeline {label!r}: add re-declares component {comp.name!r}")
             known.add(comp.name)
             result.append(TLAdd(comp))
-        elif verb == "move":
-            _, name, to = op
-            if name not in known:
-                raise SemanticError(f"timeline {label!r}: move references unknown component {name!r}")
-            result.append(TLMove(name, to))
         elif verb == "connect":
             _, source, conn_label, target, curved = op
             for endpoint in (source, target):
