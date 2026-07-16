@@ -1,18 +1,17 @@
 // Scene 2: scaling out — add a second web server and a load balancer.
-// A timeline animates the change step by step (imperative sub-language).
-service  web1 "Web Server" { at: (-4.4, 0) }
-database db   "Database"   { at: (4.4, 0) }
+// A timeline animates the change step by step (imperative sub-language); the
+// engine re-lays-out automatically as nodes are added, so existing cards slide
+// to make room (no manual `move`s).
+service  web1 "Web Server"
+database db   "Database"
 
 timeline "Scaling" {
     show web1, db
     connect web1 --[Read/Write]--> db curved
     wait
 
-    move web1 to (-4.6, -0.8)
-    move db   to (4.6, -0.8)
-
-    add service web2 "Web Server 2" { at: (-1.4, -0.8) }
-    add service lb   "Load Balancer" { kind: infra  at: (-3.0, 1.8) }
+    add service web2 "Web Server 2"
+    add service lb   "Load Balancer" { kind: infra }
 
     connect lb --> web1
     connect lb --> web2
