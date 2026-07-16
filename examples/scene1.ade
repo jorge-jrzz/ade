@@ -1,0 +1,7 @@
+// Scene 1: a web server talking to a database over a curved connection.
+service  web "Web Server"  { at: (-4.4, 0) }
+database db  "Database"    { at: (4.4, 0) }
+
+flow "Components" {
+    step 1: web --[Read/Write]--> db curved
+}

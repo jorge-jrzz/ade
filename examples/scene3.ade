@@ -1,0 +1,14 @@
+// Scene 3: an API gateway (NestJS) sending data to a Python service inside AWS.
+gateway api  "API Gateway"        { logo: nestjs  at: (-4.6, -0.9) }
+service proc "Processing Service" { logo: python  at: (3.2, -0.9) }
+
+infra "AWS Cloud Infrastructure" {
+    logo: aws
+    at: (3.15, -0.4)
+    size: (7.0, 5.6)
+    proc
+}
+
+flow "Logos" {
+    step 1: api --[Process Data]--> proc
+}
