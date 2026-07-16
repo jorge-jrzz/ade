@@ -13,10 +13,26 @@ reserved = {
     "service": "SERVICE",
     "gateway": "GATEWAY",
     "database": "DATABASE",
+    "external": "EXTERNAL",
     "infra": "INFRA",
     "flow": "FLOW",
     "step": "STEP",
     "color": "COLOR",
+    # component / boundary attributes
+    "logo": "LOGO",
+    "sublabel": "SUBLABEL",
+    "at": "AT",
+    "size": "SIZE",
+    "kind": "KIND",
+    # timeline sub-language
+    "timeline": "TIMELINE",
+    "show": "SHOW",
+    "add": "ADD",
+    "move": "MOVE",
+    "connect": "CONNECT",
+    "to": "TO",
+    "wait": "WAIT",
+    "curved": "CURVED",
 }
 
 # Full list of tokens the parser can receive
@@ -34,6 +50,7 @@ tokens = (
     "LBRACE",
     "RBRACE",
     "COLON",
+    "COMMA",
     "ARROW",
     "ARROW_PROTO",
 ) + tuple(reserved.values())
@@ -49,14 +66,15 @@ t_RPAREN = r"\)"
 t_LBRACE = r"\{"
 t_RBRACE = r"\}"
 t_COLON = r":"
+t_COMMA = r","
 
 # Characters the lexer ignores entirely (spaces and tabs)
 t_ignore = " \t"
 
 
 def t_ARROW_PROTO(t):
-    r"--\[[a-zA-Z_][a-zA-Z_0-9]*\]-->"
-    t.value = t.value[3:-4]  # keep only the protocol name, e.g. "https"
+    r"--\[[^\]\n]*\]-->"
+    t.value = t.value[3:-4].strip()  # keep only the label, e.g. "https", "Read/Write"
     return t
 
 

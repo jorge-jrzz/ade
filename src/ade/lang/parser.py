@@ -1,35 +1,50 @@
 """Syntax analyzer (yacc) for the ADE language.
 
 From the lexer tokens it builds an AST (abstract syntax tree) made of
-tuples: ('sit', expr), ('assign', name, expr), ('binop', op, left, right),
-('number', n), ('string', s), ('var', name), plus the architecture nodes:
-('component', kind, name, label, color, lineno),
-('infra', label, [names...], lineno),
-('flow', label, [steps...], lineno) where
-step = ('step', number, source, protocol_or_None, target, lineno).
+tuples. Classic nodes:
+    ('sit', expr), ('assign', name, expr), ('binop', op, left, right),
+    ('number', n), ('string', s), ('var', name)
 
-Current grammar:
+Architecture nodes:
+    ('component', kind, name, label, attrs, lineno)
+        kind  : service | gateway | database | external
+        attrs : dict with any of color/kind/logo/sublabel/at/size
+    ('infra', label, attrs, [members...], lineno)
+        attrs : dict with any of logo/at/size
+    ('flow', label, [steps...], lineno)
+        step = ('step', number, source, label_or_None, target, curved, lineno)
+    ('timeline', label, [ops...], lineno)
+        op = ('show', [ids]) | ('add', component_node) | ('move', id, (x, y))
+           | ('connect', src, label_or_None, target, curved) | ('wait',)
 
-    program         : statement*
-    statement       : SIT ( expression )
-                    | ID EQUALS expression
-                    | component_decl
-                    | infra_block
-                    | flow_block
-    component_decl  : (SERVICE|GATEWAY|DATABASE) ID STRING COLOR COLON ID
-    infra_block     : INFRA STRING { id_list }
-    id_list         : id_list ID | ID
-    flow_block      : FLOW STRING { step_list }
-    step_list       : step_list step | step
-    step            : STEP NUMBER COLON ID (ARROW|ARROW_PROTO) ID
-    expression      : expression (+|-|*|/) expression
-                    | ( expression )
-                    | NUMBER | STRING | ID
+Attribute values: at -> (x, y); size -> width or (width, height).
+
+Grammar (informal):
+
+    program        : statement*
+    statement      : SIT ( expression )
+                   | ID EQUALS expression
+                   | component_kind ID STRING [ COLOR COLON ID | { attr* } ]
+                   | INFRA STRING { infra_item* }
+                   | FLOW STRING { step* }
+                   | TIMELINE STRING { tl_stmt* }
+    component_kind : SERVICE | GATEWAY | DATABASE | EXTERNAL
+    attr           : (COLOR|KIND) COLON ID | LOGO COLON logo_ref
+                   | SUBLABEL COLON STRING | AT COLON coord | SIZE COLON size_val
+    infra_item     : ID | LOGO COLON logo_ref | AT COLON coord | SIZE COLON size_val
+    step           : STEP NUMBER COLON ID arrow ID [CURVED]
+    tl_stmt        : SHOW id_csv | ADD component_kind ID STRING [{ attr* }]
+                   | MOVE ID TO coord | CONNECT ID arrow ID [CURVED] | WAIT
+    arrow          : ARROW | ARROW_PROTO
+    coord          : ( signed_number , signed_number )
+    size_val       : signed_number | coord
+    expression     : expression (+|-|*|/) expression | ( expression )
+                   | NUMBER | STRING | ID
 """
 
 import ply.yacc as yacc
 
-from lexer import tokens, build_lexer  # noqa: F401 (yacc needs `tokens`)
+from ade.lang.lexer import tokens, build_lexer  # noqa: F401 (yacc needs `tokens`)
 
 # Operator precedence: resolves the ambiguity of 1 + 2 * 3
 precedence = (
@@ -47,28 +62,133 @@ def p_program(p):
         p[0] = [p[1]]
 
 
-def p_statement_component(p):
-    """statement : SERVICE ID STRING COLOR COLON ID
-                  | GATEWAY ID STRING COLOR COLON ID
-                  | DATABASE ID STRING COLOR COLON ID"""
-    kind = p.slice[1].type.lower()
-    p[0] = ("component", kind, p[2], p[3], p[6], p.lineno(1))
+# --- components -------------------------------------------------------------
 
+def p_component_kind(p):
+    """component_kind : SERVICE
+                      | GATEWAY
+                      | DATABASE
+                      | EXTERNAL"""
+    p[0] = p.slice[1].type.lower()
+
+
+def p_statement_component_plain(p):
+    """statement : component_kind ID STRING"""
+    p[0] = ("component", p[1], p[2], p[3], {}, p.lineno(2))
+
+
+def p_statement_component_color(p):
+    """statement : component_kind ID STRING COLOR COLON ID"""
+    p[0] = ("component", p[1], p[2], p[3], {"color": p[6]}, p.lineno(2))
+
+
+def p_statement_component_block(p):
+    """statement : component_kind ID STRING LBRACE attr_list RBRACE"""
+    p[0] = ("component", p[1], p[2], p[3], p[5], p.lineno(2))
+
+
+# --- attribute blocks -------------------------------------------------------
+
+def p_attr_list_multi(p):
+    """attr_list : attr_list attr"""
+    key, value = p[2]
+    p[0] = {**p[1], key: value}
+
+
+def p_attr_list_empty(p):
+    """attr_list : empty"""
+    p[0] = {}
+
+
+def p_attr_color(p):
+    """attr : COLOR COLON ID"""
+    p[0] = ("color", p[3])
+
+
+def p_attr_kind(p):
+    """attr : KIND COLON kind_value"""
+    p[0] = ("kind", p[3])
+
+
+def p_kind_value(p):
+    """kind_value : SERVICE
+                  | GATEWAY
+                  | DATABASE
+                  | EXTERNAL
+                  | INFRA"""
+    p[0] = p.slice[1].type.lower()
+
+
+def p_attr_logo(p):
+    """attr : LOGO COLON logo_ref"""
+    p[0] = ("logo", p[3])
+
+
+def p_attr_sublabel(p):
+    """attr : SUBLABEL COLON STRING"""
+    p[0] = ("sublabel", p[3])
+
+
+def p_attr_at(p):
+    """attr : AT COLON coord"""
+    p[0] = ("at", p[3])
+
+
+def p_attr_size(p):
+    """attr : SIZE COLON size_val"""
+    p[0] = ("size", p[3])
+
+
+def p_logo_ref(p):
+    """logo_ref : ID
+                | STRING"""
+    p[0] = p[1]
+
+
+# --- infra (boundary) -------------------------------------------------------
 
 def p_statement_infra(p):
-    """statement : INFRA STRING LBRACE id_list RBRACE"""
-    p[0] = ("infra", p[2], p[4], p.lineno(1))
+    """statement : INFRA STRING LBRACE infra_item_list RBRACE"""
+    attrs, members = p[4]
+    p[0] = ("infra", p[2], attrs, members, p.lineno(1))
 
 
-def p_id_list_multi(p):
-    """id_list : id_list ID"""
-    p[0] = p[1] + [p[2]]
+def p_infra_item_list_multi(p):
+    """infra_item_list : infra_item_list infra_item"""
+    attrs, members = p[1]
+    key, value = p[2]
+    if key == "member":
+        p[0] = (attrs, members + [value])
+    else:
+        p[0] = ({**attrs, key: value}, members)
 
 
-def p_id_list_single(p):
-    """id_list : ID"""
-    p[0] = [p[1]]
+def p_infra_item_list_empty(p):
+    """infra_item_list : empty"""
+    p[0] = ({}, [])
 
+
+def p_infra_item_member(p):
+    """infra_item : ID"""
+    p[0] = ("member", p[1])
+
+
+def p_infra_item_logo(p):
+    """infra_item : LOGO COLON logo_ref"""
+    p[0] = ("logo", p[3])
+
+
+def p_infra_item_at(p):
+    """infra_item : AT COLON coord"""
+    p[0] = ("at", p[3])
+
+
+def p_infra_item_size(p):
+    """infra_item : SIZE COLON size_val"""
+    p[0] = ("size", p[3])
+
+
+# --- flow / steps -----------------------------------------------------------
 
 def p_statement_flow(p):
     """statement : FLOW STRING LBRACE step_list RBRACE"""
@@ -85,15 +205,116 @@ def p_step_list_single(p):
     p[0] = [p[1]]
 
 
-def p_step_plain(p):
-    """step : STEP NUMBER COLON ID ARROW ID"""
-    p[0] = ("step", p[2], p[4], None, p[6], p.lineno(1))
+def p_step(p):
+    """step : STEP NUMBER COLON ID arrow ID step_opt"""
+    p[0] = ("step", p[2], p[4], p[5], p[6], p[7], p.lineno(1))
 
 
-def p_step_protocol(p):
-    """step : STEP NUMBER COLON ID ARROW_PROTO ID"""
-    p[0] = ("step", p[2], p[4], p[5], p[6], p.lineno(1))
+def p_arrow_plain(p):
+    """arrow : ARROW"""
+    p[0] = None
 
+
+def p_arrow_proto(p):
+    """arrow : ARROW_PROTO"""
+    p[0] = p[1]  # the label carried by --[label]-->
+
+
+def p_step_opt_curved(p):
+    """step_opt : CURVED"""
+    p[0] = True
+
+
+def p_step_opt_empty(p):
+    """step_opt : empty"""
+    p[0] = False
+
+
+# --- timeline (imperative animation) ---------------------------------------
+
+def p_statement_timeline(p):
+    """statement : TIMELINE STRING LBRACE tl_list RBRACE"""
+    p[0] = ("timeline", p[2], p[4], p.lineno(1))
+
+
+def p_tl_list_multi(p):
+    """tl_list : tl_list tl_stmt"""
+    p[0] = p[1] + [p[2]]
+
+
+def p_tl_list_empty(p):
+    """tl_list : empty"""
+    p[0] = []
+
+
+def p_tl_show(p):
+    """tl_stmt : SHOW id_csv"""
+    p[0] = ("show", p[2])
+
+
+def p_tl_add_plain(p):
+    """tl_stmt : ADD component_kind ID STRING"""
+    p[0] = ("add", ("component", p[2], p[3], p[4], {}, p.lineno(3)))
+
+
+def p_tl_add_block(p):
+    """tl_stmt : ADD component_kind ID STRING LBRACE attr_list RBRACE"""
+    p[0] = ("add", ("component", p[2], p[3], p[4], p[6], p.lineno(3)))
+
+
+def p_tl_move(p):
+    """tl_stmt : MOVE ID TO coord"""
+    p[0] = ("move", p[2], p[4])
+
+
+def p_tl_connect(p):
+    """tl_stmt : CONNECT ID arrow ID step_opt"""
+    p[0] = ("connect", p[2], p[3], p[4], p[5])
+
+
+def p_tl_wait(p):
+    """tl_stmt : WAIT"""
+    p[0] = ("wait",)
+
+
+def p_id_csv_multi(p):
+    """id_csv : id_csv COMMA ID"""
+    p[0] = p[1] + [p[3]]
+
+
+def p_id_csv_single(p):
+    """id_csv : ID"""
+    p[0] = [p[1]]
+
+
+# --- coordinates / sizes ----------------------------------------------------
+
+def p_coord(p):
+    """coord : LPAREN signed_number COMMA signed_number RPAREN"""
+    p[0] = (p[2], p[4])
+
+
+def p_size_val_single(p):
+    """size_val : signed_number"""
+    p[0] = p[1]
+
+
+def p_size_val_pair(p):
+    """size_val : coord"""
+    p[0] = p[1]
+
+
+def p_signed_number_pos(p):
+    """signed_number : NUMBER"""
+    p[0] = p[1]
+
+
+def p_signed_number_neg(p):
+    """signed_number : MINUS NUMBER"""
+    p[0] = -p[2]
+
+
+# --- classic statements / expressions --------------------------------------
 
 def p_statement_sit(p):
     """statement : SIT LPAREN expression RPAREN"""
@@ -133,6 +354,11 @@ def p_expression_var(p):
     p[0] = ("var", p[1])
 
 
+def p_empty(p):
+    """empty :"""
+    p[0] = None
+
+
 def p_error(p):
     if p:
         print(f"Syntax error at {p.value!r} (line {p.lineno})")
@@ -141,13 +367,30 @@ def p_error(p):
 
 
 def build_parser():
-    return yacc.yacc()
+    # write_tables/debug off so PLY doesn't drop parsetab.py / parser.out into the package.
+    return yacc.yacc(write_tables=False, debug=False)
 
 
 if __name__ == "__main__":
-    # Quick check: print the AST of a small program
+    # Quick check: print the AST of a small program that exercises the new syntax
     build_lexer()
     parser = build_parser()
-    ast = parser.parse('sit("Hello, World!")\nx = 2 + 3 * 4\nsit(x)')
-    for node in ast:
+    sample = '''
+    external client "Web Client" { at: (-4.8, 1.8) }
+    gateway api "API Gateway" { logo: nestjs  at: (-4.8, -1.3) }
+    database db "PostgreSQL" { logo: postgres  sublabel: "Primary"  at: (5.1, -1.3)  size: 2.8 }
+    infra "AWS Cloud" { logo: aws  at: (3.15, -0.4)  size: (7.2, 5.6)  api  db }
+    flow "Login" {
+        step 1: client --[HTTPS]--> api
+        step 2: api --[SQL]--> db curved
+    }
+    timeline "Scaling" {
+        show client, api
+        move client to (-4.6, -0.8)
+        add service web2 "Web Server 2" { at: (-1.4, -0.8) }
+        connect api --> web2
+        wait
+    }
+    '''
+    for node in parser.parse(sample):
         print(node)

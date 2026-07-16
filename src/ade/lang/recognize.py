@@ -8,7 +8,7 @@ cuando reconoce una oracion valida de la gramatica. No ejecuta
 codigo Manim (codegen.py) -- esas fases son responsabilidad de ade.py.
 
 Uso:
-    uv run recognize.py login_flow.ade
+    uv run python -m ade.lang.recognize examples/login_flow.ade
 """
 
 import sys
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import ply.yacc as yacc
 
-from lexer import tokens, build_lexer  # noqa: F401 (yacc necesita `tokens`)
+from ade.lang.lexer import tokens, build_lexer  # noqa: F401 (yacc necesita `tokens`)
 
 precedence = (
     ("left", "PLUS", "MINUS"),
@@ -122,8 +122,8 @@ def p_error(p):
 
 
 def build_parser():
-    # tabmodule/debugfile propios para no chocar con las tablas de parser.py
-    return yacc.yacc(tabmodule="recognizer_parsetab", debugfile="recognizer_parser.out")
+    # write_tables/debug off: no genera artefactos en el paquete ni choca con parser.py
+    return yacc.yacc(write_tables=False, debug=False)
 
 
 def recognize_file(path):
@@ -137,6 +137,6 @@ def recognize_file(path):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Uso: python recognize.py <archivo.ade>")
+        print("Uso: python -m ade.lang.recognize <archivo.ade>")
         sys.exit(1)
     recognize_file(sys.argv[1])
