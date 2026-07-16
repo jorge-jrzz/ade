@@ -25,35 +25,42 @@ Each `.ade` with architecture generates a Manim script under `build/` and render
 
 ## Language cheatsheet
 ```
+// Layout direction (optional, at most once): LR (default) | TD
+direction: LR
+
 // Components: service | gateway | database | external
+// Placement and size are fully automatic — no coordinates in the DSL.
 service  api "API Gateway" {
     logo: nestjs          // short asset alias, resolved automatically
     sublabel: "v2"
-    at: (-4.8, -1.3)      // explicit position (omit -> auto-layout)
-    size: 2.8             // width, or size: (w, h)
     kind: infra           // optional CardKind override (color)
 }
 service  x "X" color: blue        // legacy inline color (still valid)
 
-// Infra boundary: dashed region; members are bare ids
-infra "AWS Cloud" { logo: aws  at: (3.15, -0.4)  size: (7.2, 5.6)  api  db }
+// Infra boundary: dashed region; members are bare ids (box is auto-sized)
+infra "AWS Cloud" { logo: aws  api  db }
 
-// Flow: --[label]--> carries a connection label; `curved` optional
+// Flow: --[label]--> carries a connection label; `curved` optional.
+// Flow steps are the edges that drive the automatic layered layout.
 flow "Login" {
     step 1: client --[HTTPS]--> api
     step 2: api --[Read/Write]--> db curved
 }
 
-// Timeline: imperative animation (show / add / move / connect / wait)
+// Timeline: imperative animation (show / add / connect / wait).
+// Each add/connect re-solves the layout; existing nodes slide to make room.
 timeline "Scaling" {
     show web1, db
     connect web1 --[Read/Write]--> db curved
-    move web1 to (-4.6, -0.8)
-    add service web2 "Web Server 2" { at: (-1.4, -0.8) }
+    add service web2 "Web Server 2"
     connect web2 --> db
     wait
 }
 ```
+Placement is decided by the layout engine (`ade/layout.py`): components are laid out in
+flow order along the `direction` axis, boundaries wrap their members, and the whole scene is
+scaled to fit the 16:9 frame (a warning prints if it must shrink below legibility).
+
 Logos are referenced by alias (`nestjs`, `python`, `aws`, `postgresql`, ...) and resolved from
 `ade/animations/assets`; an unknown alias fails with the list of available ones.
 
