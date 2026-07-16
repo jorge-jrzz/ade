@@ -55,7 +55,13 @@ def render_architecture(model, source_path):
     from ade.animations.codegen import generate_manim_script
 
     BUILD_DIR.mkdir(exist_ok=True)
-    script_source, scene_name = generate_manim_script(model)
+    script_source, scene_name, illegible = generate_manim_script(model)
+    if illegible:
+        print(
+            "Warning: this scene is dense — the layout was scaled below the "
+            "legibility threshold and text may be hard to read. Consider "
+            "splitting it into smaller scenes."
+        )
     script_path = BUILD_DIR / f"{source_path.stem}_scene.py"
     script_path.write_text(script_source, encoding="utf-8")
 
