@@ -13,5 +13,8 @@ wheels/
 parser.out
 parsetab.py
 
+# Manim outpus
+media/
+
 # Stuff
 .DS_Store
