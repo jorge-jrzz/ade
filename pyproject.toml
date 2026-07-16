@@ -16,6 +16,19 @@ dependencies = [
 [project.scripts]
 ade = "ade:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.15.21",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Hand-written Manim demo scenes use the idiomatic `from manim import *`.
+"src/ade/animations/examples/*" = ["F403", "F405"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [build-system]
 requires = ["uv_build>=0.11.27,<0.12.0"]
 build-backend = "uv_build"
