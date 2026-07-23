@@ -79,3 +79,45 @@ def test_render_uses_quality_and_copies_only_final_video(tmp_path, monkeypatch):
     assert (build_dir / "scene_scene.py").exists()
     assert final.read_bytes() == b"new video"
     assert list(output_dir.iterdir()) == [final]
+
+
+def test_static_codegen_scales_connections_with_scene(monkeypatch):
+    assets = ModuleType("ade.animations.components.assets")
+    assets.__dict__["find_logo"] = lambda alias: alias
+    components = ModuleType("ade.animations.components")
+    themes = ModuleType("ade.animations.themes")
+    monkeypatch.setitem(sys.modules, "ade.animations.components", components)
+    monkeypatch.setitem(sys.modules, "ade.animations.components.assets", assets)
+    monkeypatch.setitem(sys.modules, "ade.animations.themes", themes)
+
+    from ade.animations import codegen
+    from ade.lang.semantic import Component, Flow, Model, Step
+
+    model = Model(
+        components={
+            "source": Component("service", "source", "Source"),
+            "target": Component("service", "target", "Target"),
+        },
+        flows=[
+            Flow(
+                "Flow",
+                [
+                    Step(
+                        1,
+                        "source",
+                        "A deliberately long request label for scaling",
+                        "target",
+                    )
+                ],
+            ),
+        ],
+    )
+
+    script, _, _ = codegen.generate_manim_script(model)
+    connection_index = script.index("conn_0 =")
+    group_index = script.index("scene_group =")
+    assert connection_index < group_index
+    assert "cards['source']" in script[connection_index:group_index]
+    assert "cards['target']" in script[connection_index:group_index]
+    assert "scene_group = Group(" in script
+    assert "conn_0" in script[script.index("scene_group ="):]

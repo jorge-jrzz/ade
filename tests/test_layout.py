@@ -24,7 +24,10 @@ def _model(components, edges=(), boundaries=(), direction="LR"):
     for c in components:
         m.components[c.name] = c
     m.boundaries = list(boundaries)
-    steps = [Step(i + 1, s, None, t) for i, (s, t) in enumerate(edges)]
+    steps = [
+        Step(i + 1, edge[0], edge[2] if len(edge) > 2 else None, edge[1])
+        for i, edge in enumerate(edges)
+    ]
     m.flows = [Flow("f", steps)] if steps else []
     m.direction = direction
     return m
@@ -164,6 +167,29 @@ def test_small_scene_not_scaled():
     result = layout.solve(_model(comps, [("a", "b")]))
     assert result.scale == 1.0
     assert not result.illegible
+
+
+def test_labeled_connection_is_included_in_scene_geometry():
+    components = [_comp("a", "A"), _comp("b", "B")]
+    plain = layout.solve(_model(components, [("a", "b")]))
+    labeled = layout.solve(
+        _model(components, [("a", "b", "A very long connection label")])
+    )
+
+    assert len(labeled.connections) == 1
+    assert labeled.connections[0].label == "A very long connection label"
+    assert labeled.connections[0].width > plain.connections[0].width
+    assert labeled.connections[0].height > plain.connections[0].height
+
+
+def test_vertical_connection_has_a_footprint():
+    components = [_comp("a", "A"), _comp("b", "B")]
+    result = layout.solve(_model(components, [("a", "b", "Vertical")], direction="TD"))
+
+    connection = result.connections[0]
+    assert not connection.horizontal
+    assert connection.width > 0
+    assert connection.height > 0
 
 
 def test_oversized_scene_scaled_and_flagged():
