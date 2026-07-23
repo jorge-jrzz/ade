@@ -5,18 +5,28 @@ Full pipeline: .ade file -> lexer (tokens) -> parser (AST)
 Manim codegen + render (service/gateway/database/infra/flow).
 
 Usage:
-    ade <file.ade>
+    ade <file.ade> [--quality {low,l,medium,m,high,h}] [--output-dir DIR]
 """
 
+import argparse
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 BUILD_DIR = Path.cwd() / "build"
+DEFAULT_OUTPUT_DIR = Path("ade-videos")
+QUALITY_PRESETS = {
+    "low": "l",
+    "l": "l",
+    "medium": "m",
+    "m": "m",
+    "high": "h",
+    "h": "h",
+}
 
 
-def run_file(path):
+def run_file(path, quality="l", output_dir=DEFAULT_OUTPUT_DIR):
     # Imported lazily so `import ade` stays light (submodules import this package).
     from ade.lang.lexer import build_lexer
     from ade.lang.parser import build_parser
@@ -45,13 +55,13 @@ def run_file(path):
 
     if model.has_architecture():
         try:
-            render_architecture(model, path)
+            render_architecture(model, path, quality, output_dir)
         except SemanticError as error:
             print(f"Semantic error: {error}")
             sys.exit(1)
 
 
-def render_architecture(model, source_path):
+def render_architecture(model, source_path, quality="l", output_dir=DEFAULT_OUTPUT_DIR):
     from ade.animations.codegen import generate_manim_script
 
     BUILD_DIR.mkdir(exist_ok=True)
@@ -73,7 +83,7 @@ def render_architecture(model, source_path):
             "uv",
             "run",
             "manim",
-            "-ql",
+            f"-q{quality}",
             "--media_dir",
             str(BUILD_DIR),
             str(script_path),
@@ -83,16 +93,36 @@ def render_architecture(model, source_path):
     )
 
     # Manim writes to build/videos/<stem>/<quality>/<Scene>.mp4; surface a clean
-    # copy at build/<name>.mp4 and tell the user where it landed.
+    # copy in the user-facing output directory without exposing build artifacts.
     rendered = next((BUILD_DIR / "videos").rglob(f"{scene_name}.mp4"), None)
     if rendered is not None:
-        final = BUILD_DIR / f"{source_path.stem}.mp4"
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        final = output_dir / f"{source_path.stem}.mp4"
         shutil.copyfile(rendered, final)
         print(f"Rendered {scene_name} -> {final}")
 
 
-def main() -> None:
-    if len(sys.argv) != 2:
-        print("Usage: ade <file.ade>")
-        sys.exit(1)
-    run_file(sys.argv[1])
+def parse_args(args=None):
+    parser = argparse.ArgumentParser(description="Render an ADE architecture video.")
+    parser.add_argument("path", help="Path to the .ade source file")
+    parser.add_argument(
+        "-q",
+        "--quality",
+        choices=QUALITY_PRESETS,
+        default="low",
+        help="Video quality: low/l, medium/m, or high/h (default: low)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help="Directory for the final MP4 only (default: ade-videos)",
+    )
+    return parser.parse_args(args)
+
+
+def main(args=None) -> None:
+    options = parse_args(args)
+    run_file(options.path, QUALITY_PRESETS[options.quality], options.output_dir)
