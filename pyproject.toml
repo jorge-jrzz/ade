@@ -20,11 +20,15 @@ ade = "ade:main"
 dev = [
     "pytest>=9.1.1",
     "ruff>=0.15.21",
+    "ty>=0.0.62",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Hand-written Manim demo scenes use the idiomatic `from manim import *`.
 "src/ade/animations/examples/*" = ["F403", "F405"]
+
+[tool.ty.environment]
+root = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
