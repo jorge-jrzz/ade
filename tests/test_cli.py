@@ -86,6 +86,9 @@ def test_static_codegen_scales_connections_with_scene(monkeypatch):
     assets.__dict__["find_logo"] = lambda alias: alias
     components = ModuleType("ade.animations.components")
     themes = ModuleType("ade.animations.themes")
+    from ade.animations.themes import Theme
+
+    themes.__dict__["LIGHT"] = Theme()
     monkeypatch.setitem(sys.modules, "ade.animations.components", components)
     monkeypatch.setitem(sys.modules, "ade.animations.components.assets", assets)
     monkeypatch.setitem(sys.modules, "ade.animations.themes", themes)
@@ -121,3 +124,151 @@ def test_static_codegen_scales_connections_with_scene(monkeypatch):
     assert "cards['target']" in script[connection_index:group_index]
     assert "scene_group = Group(" in script
     assert "conn_0" in script[script.index("scene_group ="):]
+
+
+def test_static_codegen_emits_connection_route_offset(monkeypatch):
+    assets = ModuleType("ade.animations.components.assets")
+    assets.__dict__["find_logo"] = lambda alias: alias
+    components = ModuleType("ade.animations.components")
+    themes = ModuleType("ade.animations.themes")
+    from ade.animations.themes import Theme
+
+    themes.__dict__["LIGHT"] = Theme()
+    monkeypatch.setitem(sys.modules, "ade.animations.components", components)
+    monkeypatch.setitem(sys.modules, "ade.animations.components.assets", assets)
+    monkeypatch.setitem(sys.modules, "ade.animations.themes", themes)
+
+    from ade.animations import codegen
+    from ade.lang.semantic import Component, Flow, Model, Step
+
+    model = Model(
+        components={
+            "source": Component("service", "source", "Source"),
+            "target": Component("service", "target", "Target"),
+        },
+        flows=[
+            Flow(
+                "Flow",
+                [
+                    Step(1, "source", "First", "target"),
+                    Step(2, "target", "Second", "source"),
+                ],
+            ),
+        ],
+    )
+
+    script, _, _ = codegen.generate_manim_script(model)
+    assert ".route_offset(-0.35)" in script
+    assert ".route_offset(0.35)" in script
+
+
+def test_static_codegen_emits_explicit_connection_anchors(monkeypatch):
+    assets = ModuleType("ade.animations.components.assets")
+    assets.__dict__["find_logo"] = lambda alias: alias
+    components = ModuleType("ade.animations.components")
+    themes = ModuleType("ade.animations.themes")
+    from ade.animations.themes import Theme
+
+    themes.__dict__["LIGHT"] = Theme()
+    monkeypatch.setitem(sys.modules, "ade.animations.components", components)
+    monkeypatch.setitem(sys.modules, "ade.animations.components.assets", assets)
+    monkeypatch.setitem(sys.modules, "ade.animations.themes", themes)
+
+    from ade.animations import codegen
+    from ade.lang.semantic import Component, Flow, Model, Step
+
+    model = Model(
+        components={
+            "source": Component("service", "source", "Source"),
+            "target": Component("service", "target", "Target"),
+        },
+        flows=[Flow("Flow", [Step(1, "source", "Request", "target")])],
+    )
+
+    script, _, _ = codegen.generate_manim_script(model)
+    assert ".anchors([1.3, 0.0, 0], [1.3, 0.0, 0], True)" not in script
+    assert ".anchors(" in script
+
+
+def test_static_codegen_emits_layout_label_positions(monkeypatch):
+    assets = ModuleType("ade.animations.components.assets")
+    assets.__dict__["find_logo"] = lambda alias: alias
+    components = ModuleType("ade.animations.components")
+    themes = ModuleType("ade.animations.themes")
+    from ade.animations.themes import Theme
+
+    themes.__dict__["LIGHT"] = Theme()
+    monkeypatch.setitem(sys.modules, "ade.animations.components", components)
+    monkeypatch.setitem(sys.modules, "ade.animations.components.assets", assets)
+    monkeypatch.setitem(sys.modules, "ade.animations.themes", themes)
+
+    from ade.animations import codegen
+    from ade.lang.semantic import Component, Flow, Model, Step
+
+    model = Model(
+        components={
+            "source": Component("service", "source", "Source"),
+            "a": Component("service", "a", "A"),
+            "b": Component("service", "b", "B"),
+            "c": Component("service", "c", "C"),
+        },
+        flows=[
+            Flow(
+                "Fanout",
+                [
+                    Step(1, "source", "A", "a"),
+                    Step(2, "source", "B", "b"),
+                    Step(3, "source", "C", "c"),
+                ],
+            )
+        ],
+    )
+
+    script, _, _ = codegen.generate_manim_script(model)
+    positions = [line.split(".label_position(", 1)[1].split(")", 1)[0] for line in script.splitlines() if ".label_position(" in line]
+    assert len(positions) == 3
+    assert len(set(positions)) == 3
+
+
+def test_static_codegen_colors_flows_and_adds_legend(monkeypatch):
+    assets = ModuleType("ade.animations.components.assets")
+    assets.__dict__["find_logo"] = lambda alias: alias
+    components = ModuleType("ade.animations.components")
+    themes = ModuleType("ade.animations.themes")
+    from ade.animations.themes import Theme
+
+    themes.__dict__["LIGHT"] = Theme()
+    monkeypatch.setitem(sys.modules, "ade.animations.components", components)
+    monkeypatch.setitem(sys.modules, "ade.animations.components.assets", assets)
+    monkeypatch.setitem(sys.modules, "ade.animations.themes", themes)
+
+    from ade.animations import codegen
+    from ade.lang.semantic import Component, Flow, Model, Step
+
+    model = Model(
+        components={
+            "source": Component("service", "source", "Source"),
+            "target": Component("service", "target", "Target"),
+        },
+        flows=[
+            Flow("Requests", [Step(1, "source", "Request", "target")]),
+            Flow("Responses", [Step(1, "target", "Response", "source")]),
+        ],
+    )
+
+    script, _, _ = codegen.generate_manim_script(model)
+    assert ".color('#2563EB')" in script
+    assert ".color('#EA580C')" in script
+    assert "legend = VGroup(" in script
+    assert "legend" in script[script.index("scene_group ="):]
+    assert "Text('Request', font_size=24, color='#2563EB')" in script
+    assert "from manim import DOWN, Dot, RIGHT," in script
+
+
+def test_flow_palette_is_deterministic_and_varies_steps():
+    from ade.animations.themes import Theme
+
+    theme = Theme()
+    assert theme.flow_color(0, 0) == theme.flow_color(0, 0)
+    assert theme.flow_color(0, 0) != theme.flow_color(1, 0)
+    assert theme.flow_color(0, 0) != theme.flow_color(0, 1)

@@ -192,6 +192,60 @@ def test_vertical_connection_has_a_footprint():
     assert connection.height > 0
 
 
+def test_opposite_connections_receive_distinct_lanes():
+    components = [_comp("a", "A"), _comp("b", "B")]
+    result = layout.solve(_model(components, [("a", "b"), ("b", "a")]))
+
+    assert [connection.lane for connection in result.connections] == [-1, 1]
+
+
+def test_fan_out_connections_receive_distinct_offsets():
+    components = [_comp("proxy", "Proxy")] + [
+        _comp(f"service{i}", f"Service {i}") for i in range(3)
+    ]
+    edges = [("proxy", f"service{i}") for i in range(3)]
+    result = layout.solve(_model(components, edges))
+
+    assert len({connection.route_offset for connection in result.connections}) == 3
+
+
+def test_connection_ports_face_each_other_and_stay_bounded():
+    components = [_comp("source", "Source"), _comp("target", "Target")]
+    result = layout.solve(_model(components, [("source", "target")]))
+
+    connection = result.connections[0]
+    source = result.nodes[connection.source]
+    target = result.nodes[connection.target]
+    assert (connection.source_port, connection.target_port) == ("right", "left")
+    assert abs(connection.source_offset) <= source.height / 2
+    assert abs(connection.target_offset) <= target.height / 2
+
+
+def test_vertical_connection_ports_face_each_other():
+    components = [_comp("source", "Source"), _comp("target", "Target")]
+    result = layout.solve(_model(components, [("source", "target")], direction="TD"))
+
+    connection = result.connections[0]
+    assert (connection.source_port, connection.target_port) == ("bottom", "top")
+
+
+def test_dense_graph_can_choose_vertical_candidate():
+    components = [_comp(f"n{i}", f"Node {i}") for i in range(6)]
+    edges = [(f"n{i}", f"n{i + 1}") for i in range(5)]
+    result = layout.solve(_model(components, edges))
+
+    assert result.direction in {"LR", "TD"}
+    assert result.scale > 0
+
+
+def test_direction_is_authoritative():
+    components = [_comp(f"n{i}", f"Node {i}") for i in range(6)]
+    edges = [(f"n{i}", f"n{i + 1}") for i in range(5)]
+
+    assert layout.solve(_model(components, edges, direction="LR")).direction == "LR"
+    assert layout.solve(_model(components, edges, direction="TD")).direction == "TD"
+
+
 def test_oversized_scene_scaled_and_flagged():
     # A long chain overflows the frame and must scale below the threshold.
     comps = [_comp(f"n{i}", f"Node {i}") for i in range(12)]

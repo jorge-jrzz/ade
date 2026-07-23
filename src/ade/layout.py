@@ -54,6 +54,8 @@ FRAME_MARGIN = 0.6  # keep content off the very edge
 USABLE_W = FRAME_W - FRAME_MARGIN
 USABLE_H = FRAME_H - FRAME_MARGIN
 LEGIBILITY_THRESHOLD = 0.7  # below this scale, text is likely illegible
+LEGEND_W = 3.2
+LEGEND_H = 1.2
 
 
 @dataclass
@@ -84,6 +86,14 @@ class ConnectionGeom:
     y: float
     width: float
     height: float
+    lane: int = 0
+    route_offset: float = 0.0
+    source_port: str = "right"
+    target_port: str = "left"
+    source_offset: float = 0.0
+    target_offset: float = 0.0
+    label_x: float = 0.0
+    label_y: float = 0.0
 
 
 @dataclass
@@ -94,6 +104,7 @@ class LayoutResult:
     scale: float = 1.0
     illegible: bool = False
     direction: str = "LR"
+    legend: bool = False
 
 
 # --- card size estimation (task 1.4) ----------------------------------------
@@ -296,10 +307,46 @@ def _boundary_boxes(boundaries, nodes):
     return boxes
 
 
+def _assign_lanes(edges):
+    """Assign stable lanes to reciprocal, parallel, and fan-out edges."""
+    pair_groups = defaultdict(list)
+    for index, edge in enumerate(edges):
+        source, target = edge[:2]
+        pair_groups[tuple(sorted((source, target)))].append(index)
+
+    lanes = [0] * len(edges)
+    for indexes in pair_groups.values():
+        ordered = sorted(indexes)
+        centered = [i - (len(ordered) - 1) / 2 for i in range(len(ordered))]
+        for index, lane in zip(ordered, centered):
+            lanes[index] = int(lane * 2)
+
+    # Spread fan-out/fan-in edges that do not share a pair on the same side.
+    for endpoint_index in (0, 1):
+        groups = defaultdict(list)
+        for index, edge in enumerate(edges):
+            groups[edge[endpoint_index]].append(index)
+        for indexes in groups.values():
+            if len(indexes) < 2:
+                continue
+            for position, index in enumerate(indexes):
+                if lanes[index] == 0:
+                    lanes[index] = position - (len(indexes) - 1) // 2
+    return lanes
+
+
+def _bounded_port_offset(node, port, offset):
+    """Keep a port offset on the usable span of its card edge."""
+    span = node.height if port in {"left", "right"} else node.width
+    limit = max(0.0, span / 2 - CONNECTION_STROKE_PAD)
+    return max(-limit, min(limit, offset))
+
+
 def _connection_boxes(edges, nodes):
     """Estimate each straight connection's footprint, including its label."""
     boxes = []
-    for edge in edges:
+    lanes = _assign_lanes(edges)
+    for edge, lane in zip(edges, lanes):
         source, target = edge[:2]
         label = edge[2] if len(edge) > 2 else None
         start = nodes[source]
@@ -308,9 +355,17 @@ def _connection_boxes(edges, nodes):
         dy = end.y - start.y
         horizontal = abs(dx) >= abs(dy)
         if horizontal:
+            source_port = "right" if dx >= 0 else "left"
+            target_port = "left" if dx >= 0 else "right"
+        else:
+            source_port = "top" if dy >= 0 else "bottom"
+            target_port = "bottom" if dy >= 0 else "top"
+        source_offset = _bounded_port_offset(start, source_port, lane * 0.18)
+        target_offset = _bounded_port_offset(end, target_port, lane * 0.18)
+        if horizontal:
             start_x = start.x + (start.width / 2 if dx >= 0 else -start.width / 2)
             end_x = end.x + (-end.width / 2 if dx >= 0 else end.width / 2)
-            line_y0, line_y1 = start.y, end.y
+            line_y0, line_y1 = start.y + source_offset, end.y + target_offset
             label_width = len(label or "") * CONNECTION_LABEL_CHAR_W
             label_height = CONNECTION_LABEL_H if label else 0.0
             label_center_x = (start_x + end_x) / 2
@@ -329,7 +384,7 @@ def _connection_boxes(edges, nodes):
         else:
             start_y = start.y + (start.height / 2 if dy >= 0 else -start.height / 2)
             end_y = end.y + (-end.height / 2 if dy >= 0 else end.height / 2)
-            line_x0, line_x1 = start.x, end.x
+            line_x0, line_x1 = start.x + source_offset, end.x + target_offset
             label_width = len(label or "") * CONNECTION_LABEL_CHAR_W
             label_height = CONNECTION_LABEL_H if label else 0.0
             label_center_x = (line_x0 + line_x1) / 2 + CONNECTION_LABEL_GAP
@@ -362,6 +417,14 @@ def _connection_boxes(edges, nodes):
                 (min(ys) + max(ys)) / 2,
                 max(xs) - min(xs),
                 max(ys) - min(ys),
+                lane=lane,
+                route_offset=lane * 0.35,
+                source_port=source_port,
+                target_port=target_port,
+                source_offset=source_offset,
+                target_offset=target_offset,
+                label_x=label_center_x,
+                label_y=label_center_y,
             )
         )
     return boxes
@@ -405,14 +468,21 @@ def _fit_scale(width, height):
 # --- public API -------------------------------------------------------------
 
 
-def solve_graph(components, edges, boundaries, direction="LR"):
+def solve_graph(components, edges, boundaries, direction="LR", legend_corner="TR"):
     """Solve a layout for an explicit graph (used directly for timeline
-    snapshots). `components` is an ordered name->Component mapping."""
+    snapshots). `components` is an ordered name->Component mapping. The
+    direction is an explicit authoring choice; adaptive routing changes edge
+    lanes within that orientation but does not silently rotate the scene."""
     names = list(components)
     if not names:
         return LayoutResult(direction=direction)
 
     sizes = {n: estimate_card_size(components[n]) for n in names}
+    return _solve_graph_once(components, edges, boundaries, direction, sizes, legend_corner)
+
+
+def _solve_graph_once(components, edges, boundaries, direction, sizes, legend_corner="TR"):
+    names = list(components)
     rank, preds = _rank_nodes(names, edges)
     by_rank = _order_ranks(names, rank, preds, components)
     nodes = _assign_coords(by_rank, sizes, direction)
@@ -420,6 +490,9 @@ def solve_graph(components, edges, boundaries, direction="LR"):
     connections = _connection_boxes(edges, nodes)
     width, height = _recenter(nodes, boxes, connections)
     scale = _fit_scale(width, height)
+    has_legend = any(len(edge) > 2 and edge[2] for edge in edges)
+    if has_legend:
+        scale = min(scale, USABLE_W / (width + LEGEND_W), USABLE_H / (height + LEGEND_H))
     return LayoutResult(
         nodes=nodes,
         boundaries=boxes,
@@ -427,6 +500,7 @@ def solve_graph(components, edges, boundaries, direction="LR"):
         scale=scale,
         illegible=scale < LEGIBILITY_THRESHOLD,
         direction=direction,
+        legend=has_legend,
     )
 
 
@@ -438,4 +512,4 @@ def solve(model, direction=None):
     for flow in model.flows:
         for step in flow.steps:
             edges.append((step.source, step.target, step.label))
-    return solve_graph(model.components, edges, model.boundaries, direction)
+    return solve_graph(model.components, edges, model.boundaries, direction, model.legend_corner)
