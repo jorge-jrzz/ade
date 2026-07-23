@@ -60,7 +60,7 @@ def test_render_uses_quality_and_copies_only_final_video(tmp_path, monkeypatch):
     rendered.write_bytes(b"new video")
 
     codegen = ModuleType("ade.animations.codegen")
-    codegen.generate_manim_script = lambda model: ("scene source", "Scene", False)
+    codegen.__dict__["generate_manim_script"] = lambda model: ("scene source", "Scene", False)
     monkeypatch.setitem(sys.modules, "ade.animations.codegen", codegen)
     monkeypatch.setattr(ade, "BUILD_DIR", build_dir)
     command = []

@@ -84,7 +84,7 @@ class CardBuilder:
         self._theme = theme
         return self
 
-    def size(self, width: float = None, height: float = None) -> "CardBuilder":
+    def size(self, width: float | None = None, height: float | None = None) -> "CardBuilder":
         """Force the box size; by default it adapts to the content."""
         self._width = width
         self._height = height

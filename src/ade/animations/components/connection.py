@@ -15,6 +15,7 @@ from manim import (
     GrowArrow,
     Line,
     MoveAlongPath,
+    Mobject,
     Succession,
     Text,
     VGroup,
@@ -93,15 +94,15 @@ class ConnectionBuilder:
     """
 
     def __init__(self):
-        self._source = None
-        self._target = None
+        self._source: Mobject | None = None
+        self._target: Mobject | None = None
         self._label = None
         self._color = None
         self._curve_angle = None
         self._theme = LIGHT
         self._gap = 0.1
 
-    def between(self, source, target) -> "ConnectionBuilder":
+    def between(self, source: Mobject, target: Mobject) -> "ConnectionBuilder":
         self._source = source
         self._target = target
         return self
@@ -156,6 +157,7 @@ class ConnectionBuilder:
     def _anchors(self):
         """Pick the facing edges of source and target along the dominant axis."""
         s, t = self._source, self._target
+        assert s is not None and t is not None
         delta = t.get_center() - s.get_center()
         if abs(delta[0]) >= abs(delta[1]):  # mostly horizontal
             if delta[0] >= 0:
