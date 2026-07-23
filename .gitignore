@@ -15,8 +15,9 @@ wheels/
 parser.out
 parsetab.py
 
-# Manim outpus
+# Project outpus
 media/
+ade-videos/
 
 # Stuff
 .DS_Store

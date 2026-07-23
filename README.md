@@ -16,7 +16,26 @@ uv run ade examples/scene3.ade       # logos + AWS boundary
 uv run ade examples/scene4.ade       # full request pipeline
 uv run ade examples/scene2.ade       # timeline (scaling animation)
 ```
-Each `.ade` with architecture generates a Manim script under `build/` and renders it.
+Each `.ade` with architecture generates a Manim script and internal render artifacts under
+`build/`, then writes the final MP4 to `ade-videos/`.
+
+### Video output
+
+```bash
+# Low quality is the default: 854x480 at 15 FPS
+uv run ade examples/scene1.ade
+
+# Presets: low/l, medium/m (1280x720 at 30 FPS), high/h (1920x1080 at 60 FPS)
+uv run ade examples/scene1.ade --quality medium
+uv run ade examples/scene1.ade -q h
+
+# Put only the final MP4 in a custom directory
+uv run ade examples/scene1.ade --output-dir renders
+uv run ade examples/scene1.ade -q high -o releases
+```
+
+`--output-dir` (`-o`) creates its directory if needed and overwrites an existing video with
+the same source name. It does not move Manim's internal `build/` artifacts.
 
 ## Package layout
 - `ade/lang` — lexer, parser, semantic analysis, interpreter (the language front-end).
@@ -69,3 +88,9 @@ Logos are referenced by alias (`nestjs`, `python`, `aws`, `postgresql`, ...) and
 uv run python -m ade.lang.lexer
 uv run python -m ade.lang.recognize examples/login_flow.ade
 ```
+
+
+---
+
+## Plan / Specs
+claude --resume f83f6f2c-008d-41b7-84be-3cd587377f4b
