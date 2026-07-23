@@ -32,14 +32,16 @@ class Connection(VGroup):
     """
 
     def __init__(self, arrow, label=None, spine=None):
-        super().__init__(*[m for m in (arrow, label) if m is not None])
+        if spine is None:
+            spine = Line(arrow.get_start(), arrow.get_end())
+        # Keep the packet path in the group so scene transforms apply to it,
+        # while hiding it because the arrow is the visible representation.
+        spine.set_opacity(0)
+        super().__init__(*[m for m in (arrow, label, spine) if m is not None])
         self.arrow = arrow
         self.label = label
-        # Geometric path the packet follows; defaults to the arrow's chord so
-        # directly-constructed Connections keep working without a spine.
-        self.spine = (
-            spine if spine is not None else Line(arrow.get_start(), arrow.get_end())
-        )
+        # Geometric path the packet follows; it shares transforms with the arrow.
+        self.spine = spine
 
     def grow(self) -> AnimationGroup:
         """Draw the arrow and fade the label in."""
@@ -97,6 +99,7 @@ class ConnectionBuilder:
         self._source: Mobject | None = None
         self._target: Mobject | None = None
         self._label = None
+        self._label_font_size = 22
         self._color = None
         self._curve_angle = None
         self._theme = LIGHT
@@ -109,6 +112,10 @@ class ConnectionBuilder:
 
     def label(self, text: str) -> "ConnectionBuilder":
         self._label = text
+        return self
+
+    def label_size(self, value: float) -> "ConnectionBuilder":
+        self._label_font_size = value
         return self
 
     def color(self, value: str) -> "ConnectionBuilder":
@@ -149,7 +156,7 @@ class ConnectionBuilder:
 
         label = None
         if self._label is not None:
-            label = Text(self._label, font_size=22, color=color)
+            label = Text(self._label, font_size=self._label_font_size, color=color)
             label.next_to(arrow, UP if horizontal else RIGHT, buff=0.25)
 
         return Connection(arrow, label, spine=spine)

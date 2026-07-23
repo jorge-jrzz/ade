@@ -29,6 +29,10 @@ CHAR_W = 0.19  # ~width per label char at font_size 24
 SUBLABEL_CHAR_W = 0.15  # ~width per sublabel char at font_size 18
 LABEL_H = 0.26  # label line height (font_size 24)
 SUBLABEL_H = 0.24  # sublabel line height (font_size 18)
+CONNECTION_LABEL_CHAR_W = 0.17  # ~width per connection-label char at font_size 22
+CONNECTION_LABEL_H = 0.24  # connection-label line height (font_size 22)
+CONNECTION_LABEL_GAP = 0.25  # ConnectionBuilder label.next_to(..., buff=0.25)
+CONNECTION_STROKE_PAD = 0.1  # reserve a small margin around the arrow stroke
 LOGO_H = 1.1  # CardBuilder default logo height
 LOGO_W = 1.1  # logos are ~square once rasterized
 CONTENT_GAP = 0.25  # CardBuilder content arrange(DOWN, buff=0.25)
@@ -71,9 +75,22 @@ class BoundaryGeom:
 
 
 @dataclass
+class ConnectionGeom:
+    source: str
+    target: str
+    label: str | None
+    horizontal: bool
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass
 class LayoutResult:
     nodes: dict = field(default_factory=dict)  # name -> NodeGeom
     boundaries: list = field(default_factory=list)  # list[BoundaryGeom]
+    connections: list = field(default_factory=list)  # list[ConnectionGeom]
     scale: float = 1.0
     illegible: bool = False
     direction: str = "LR"
@@ -114,7 +131,8 @@ def _rank_nodes(names, edges):
     index = {n: i for i, n in enumerate(names)}
     succ = {n: [] for n in names}
     seen = set()
-    for s, t in edges:
+    for edge in edges:
+        s, t = edge[:2]
         if s == t or s not in succ or t not in succ or (s, t) in seen:
             continue
         succ[s].append(t)
@@ -278,7 +296,78 @@ def _boundary_boxes(boundaries, nodes):
     return boxes
 
 
-def _recenter(nodes, boxes):
+def _connection_boxes(edges, nodes):
+    """Estimate each straight connection's footprint, including its label."""
+    boxes = []
+    for edge in edges:
+        source, target = edge[:2]
+        label = edge[2] if len(edge) > 2 else None
+        start = nodes[source]
+        end = nodes[target]
+        dx = end.x - start.x
+        dy = end.y - start.y
+        horizontal = abs(dx) >= abs(dy)
+        if horizontal:
+            start_x = start.x + (start.width / 2 if dx >= 0 else -start.width / 2)
+            end_x = end.x + (-end.width / 2 if dx >= 0 else end.width / 2)
+            line_y0, line_y1 = start.y, end.y
+            label_width = len(label or "") * CONNECTION_LABEL_CHAR_W
+            label_height = CONNECTION_LABEL_H if label else 0.0
+            label_center_x = (start_x + end_x) / 2
+            label_center_y = (line_y0 + line_y1) / 2 + CONNECTION_LABEL_GAP
+            xs = [start_x, end_x]
+            ys = [line_y0, line_y1]
+            if label:
+                xs += [
+                    label_center_x - label_width / 2,
+                    label_center_x + label_width / 2,
+                ]
+                ys += [
+                    label_center_y - label_height / 2,
+                    label_center_y + label_height / 2,
+                ]
+        else:
+            start_y = start.y + (start.height / 2 if dy >= 0 else -start.height / 2)
+            end_y = end.y + (-end.height / 2 if dy >= 0 else end.height / 2)
+            line_x0, line_x1 = start.x, end.x
+            label_width = len(label or "") * CONNECTION_LABEL_CHAR_W
+            label_height = CONNECTION_LABEL_H if label else 0.0
+            label_center_x = (line_x0 + line_x1) / 2 + CONNECTION_LABEL_GAP
+            label_center_y = (start_y + end_y) / 2
+            xs = [line_x0, line_x1]
+            ys = [start_y, end_y]
+            if label:
+                xs += [
+                    label_center_x - label_width / 2,
+                    label_center_x + label_width / 2,
+                ]
+                ys += [
+                    label_center_y - label_height / 2,
+                    label_center_y + label_height / 2,
+                ]
+
+        xs = [x - CONNECTION_STROKE_PAD for x in xs] + [
+            x + CONNECTION_STROKE_PAD for x in xs
+        ]
+        ys = [y - CONNECTION_STROKE_PAD for y in ys] + [
+            y + CONNECTION_STROKE_PAD for y in ys
+        ]
+        boxes.append(
+            ConnectionGeom(
+                source,
+                target,
+                label,
+                horizontal,
+                (min(xs) + max(xs)) / 2,
+                (min(ys) + max(ys)) / 2,
+                max(xs) - min(xs),
+                max(ys) - min(ys),
+            )
+        )
+    return boxes
+
+
+def _recenter(nodes, boxes, connections):
     """Shift everything so the full bounding box is centered on the origin."""
     xs, ys = [], []
     for g in nodes.values():
@@ -287,6 +376,9 @@ def _recenter(nodes, boxes):
     for b in boxes:
         xs += [b.x - b.width / 2, b.x + b.width / 2]
         ys += [b.y - b.height / 2, b.y + b.height / 2]
+    for c in connections:
+        xs += [c.x - c.width / 2, c.x + c.width / 2]
+        ys += [c.y - c.height / 2, c.y + c.height / 2]
     if not xs:
         return 0.0, 0.0
     dx = (min(xs) + max(xs)) / 2
@@ -297,6 +389,9 @@ def _recenter(nodes, boxes):
     for b in boxes:
         b.x -= dx
         b.y -= dy
+    for c in connections:
+        c.x -= dx
+        c.y -= dy
     return max(xs) - min(xs), max(ys) - min(ys)
 
 
@@ -322,11 +417,13 @@ def solve_graph(components, edges, boundaries, direction="LR"):
     by_rank = _order_ranks(names, rank, preds, components)
     nodes = _assign_coords(by_rank, sizes, direction)
     boxes = _boundary_boxes(boundaries, nodes)
-    width, height = _recenter(nodes, boxes)
+    connections = _connection_boxes(edges, nodes)
+    width, height = _recenter(nodes, boxes, connections)
     scale = _fit_scale(width, height)
     return LayoutResult(
         nodes=nodes,
         boundaries=boxes,
+        connections=connections,
         scale=scale,
         illegible=scale < LEGIBILITY_THRESHOLD,
         direction=direction,
@@ -340,5 +437,5 @@ def solve(model, direction=None):
     edges = []
     for flow in model.flows:
         for step in flow.steps:
-            edges.append((step.source, step.target))
+            edges.append((step.source, step.target, step.label))
     return solve_graph(model.components, edges, model.boundaries, direction)

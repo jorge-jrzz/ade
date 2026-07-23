@@ -76,10 +76,12 @@ def _boundary_expr(box):
     return "".join(parts)
 
 
-def _connection_expr(src_var, dst_var, label, curved):
+def _connection_expr(src_var, dst_var, label, curved, label_scale=None):
     parts = [f"ConnectionBuilder().between({src_var}, {dst_var})"]
     if label:
         parts.append(f".label({label!r})")
+        if label_scale is not None:
+            parts.append(f".label_size({round(22 * label_scale, 3)})")
     if curved:
         parts.append(".curved()")
     parts.append(".build()")
@@ -115,10 +117,13 @@ def _generate_static(model):
     for i, box in enumerate(result.boundaries):
         lines.append(f"        boundary_{i} = {_boundary_expr(box)}")
 
-    # Group boundaries (behind) + cards and scale the whole drawing to fit the
-    # frame; connections are built afterwards so they anchor to scaled cards.
+    conn_vars = _connection_definitions(model, lines)
+
+    # Group the complete scene before scaling so connections and labels follow
+    # the same transform as cards and boundaries.
     members = [f"boundary_{i}" for i in range(len(result.boundaries))]
     members += [f"cards[{n!r}]" for n in model.components]
+    members += conn_vars
     if members:
         lines.append(f"        scene_group = Group({', '.join(members)})")
         if result.scale < 0.999:
@@ -131,13 +136,12 @@ def _generate_static(model):
     if fade_ins:
         lines.append(f"        self.play({fade_ins}, run_time=1.2)")
 
-    lines += _flow_lines(model)
+    lines += _flow_lines(conn_vars)
     lines.append("        self.wait(2)")
     return _assemble(scene_name, lines), scene_name, result.illegible
 
 
-def _flow_lines(model):
-    lines = []
+def _connection_definitions(model, lines):
     conn_vars = []
     for flow in model.flows:
         lines.append("")
@@ -151,10 +155,15 @@ def _flow_lines(model):
                 step.curved,
             )
             lines.append(f"        {var} = {expr}")
-            lines.append(f"        self.play({var}.grow())")
             conn_vars.append(var)
+    return conn_vars
 
+
+def _flow_lines(conn_vars):
+    lines = []
     if conn_vars:
+        for var in conn_vars:
+            lines.append(f"        self.play({var}.grow())")
         lines.append("")
         lines.append("        # a request travels through the pipeline")
         for var in conn_vars:
@@ -244,7 +253,11 @@ def _generate_timeline(model, timeline):
             var = f"conn_{conn_count}"
             conn_count += 1
             expr = _connection_expr(
-                f"cards[{op.source!r}]", f"cards[{op.target!r}]", op.label, op.curved
+                f"cards[{op.source!r}]",
+                f"cards[{op.target!r}]",
+                op.label,
+                op.curved,
+                label_scale=scale,
             )
             lines.append(f"        {var} = {expr}")
             lines.append(f"        self.play({var}.grow())")
