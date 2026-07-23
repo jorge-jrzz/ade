@@ -20,6 +20,7 @@ reserved = {
     "color": "COLOR",
     # layout direction: LR (default) | TD
     "direction": "DIRECTION",
+    "legend": "LEGEND",
     # component / boundary attributes
     "logo": "LOGO",
     "sublabel": "SUBLABEL",

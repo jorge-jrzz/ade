@@ -95,6 +95,7 @@ class Timeline:
 
 
 VALID_DIRECTIONS = {"LR", "TD"}
+VALID_LEGEND_CORNERS = {"TL", "TR", "BL", "BR"}
 
 
 @dataclass
@@ -104,6 +105,7 @@ class Model:
     flows: list = field(default_factory=list)
     timelines: list = field(default_factory=list)
     direction: str = "LR"  # layout main axis: LR (default) | TD
+    legend_corner: str = "TR"
 
     def has_architecture(self):
         return bool(self.components or self.timelines)
@@ -137,8 +139,20 @@ def validate(ast):
 
     # 0) layout direction (at most one)
     direction_seen = False
+    legend_seen = False
     for node in ast:
         if node[0] != "direction":
+            if node[0] != "legend":
+                continue
+            _, value, lineno = node
+            if value not in VALID_LEGEND_CORNERS:
+                raise SemanticError(
+                    f"line {lineno}: unknown legend corner {value!r} (expected one of {sorted(VALID_LEGEND_CORNERS)})"
+                )
+            if legend_seen:
+                raise SemanticError(f"line {lineno}: duplicate legend: statement")
+            model.legend_corner = value
+            legend_seen = True
             continue
         _, value, lineno = node
         if value not in VALID_DIRECTIONS:

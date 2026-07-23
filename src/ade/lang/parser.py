@@ -276,6 +276,11 @@ def p_statement_direction(p):
     p[0] = ("direction", p[3], p.lineno(1))
 
 
+def p_statement_legend(p):
+    """statement : LEGEND COLON ID"""
+    p[0] = ("legend", p[3], p.lineno(1))
+
+
 # --- classic statements / expressions --------------------------------------
 
 
