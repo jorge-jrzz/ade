@@ -102,8 +102,11 @@ class ConnectionBuilder:
         self._label_font_size = 22
         self._color = None
         self._curve_angle = None
+        self._route_offset = 0.0
         self._theme = LIGHT
         self._gap = 0.1
+        self._explicit_anchors = None
+        self._label_position = None
 
     def between(self, source: Mobject, target: Mobject) -> "ConnectionBuilder":
         self._source = source
@@ -127,6 +130,21 @@ class ConnectionBuilder:
         self._curve_angle = angle
         return self
 
+    def route_offset(self, value: float) -> "ConnectionBuilder":
+        """Offset a straight route perpendicular to its dominant axis."""
+        self._route_offset = value
+        return self
+
+    def anchors(self, source, target, horizontal: bool) -> "ConnectionBuilder":
+        """Use layout-selected endpoints instead of inferring card edges."""
+        self._explicit_anchors = (source, target, horizontal)
+        return self
+
+    def label_position(self, position) -> "ConnectionBuilder":
+        """Use the layout-selected center for the connection label."""
+        self._label_position = position
+        return self
+
     def theme(self, theme: Theme) -> "ConnectionBuilder":
         self._theme = theme
         return self
@@ -138,7 +156,10 @@ class ConnectionBuilder:
             )
 
         color = self._color or self._theme.flow
-        start, end, horizontal = self._anchors()
+        if self._explicit_anchors is None:
+            start, end, horizontal = self._anchors()
+        else:
+            start, end, horizontal = self._explicit_anchors
 
         if self._curve_angle is not None:
             arrow = CurvedArrow(start, end, angle=self._curve_angle, color=color)
@@ -157,7 +178,10 @@ class ConnectionBuilder:
         label = None
         if self._label is not None:
             label = Text(self._label, font_size=self._label_font_size, color=color)
-            label.next_to(arrow, UP if horizontal else RIGHT, buff=0.25)
+            if self._label_position is None:
+                label.next_to(arrow, UP if horizontal else RIGHT, buff=0.25)
+            else:
+                label.move_to(self._label_position)
 
         return Connection(arrow, label, spine=spine)
 
@@ -167,21 +191,28 @@ class ConnectionBuilder:
         assert s is not None and t is not None
         delta = t.get_center() - s.get_center()
         if abs(delta[0]) >= abs(delta[1]):  # mostly horizontal
+            offset = UP * self._route_offset
             if delta[0] >= 0:
                 return (
-                    s.get_right() + RIGHT * self._gap,
-                    t.get_left() + LEFT * self._gap,
+                    s.get_right() + RIGHT * self._gap + offset,
+                    t.get_left() + LEFT * self._gap + offset,
                     True,
                 )
             return (
-                s.get_left() + LEFT * self._gap,
-                t.get_right() + RIGHT * self._gap,
+                s.get_left() + LEFT * self._gap + offset,
+                t.get_right() + RIGHT * self._gap + offset,
                 True,
             )
         if delta[1] <= 0:  # target below source
+            offset = RIGHT * self._route_offset
             return (
-                s.get_bottom() + DOWN * self._gap,
-                t.get_top() + UP * self._gap,
+                s.get_bottom() + DOWN * self._gap + offset,
+                t.get_top() + UP * self._gap + offset,
                 False,
             )
-        return s.get_top() + UP * self._gap, t.get_bottom() + DOWN * self._gap, False
+        offset = RIGHT * self._route_offset
+        return (
+            s.get_top() + UP * self._gap + offset,
+            t.get_bottom() + DOWN * self._gap + offset,
+            False,
+        )

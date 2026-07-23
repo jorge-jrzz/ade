@@ -18,10 +18,11 @@ import re
 
 from ade import layout
 from ade.animations.components.assets import find_logo
+from ade.animations.themes import LIGHT
 from ade.lang.semantic import SemanticError, TLAdd, TLConnect, TLShow, TLWait
 
 GENERATED_IMPORTS = [
-    "from manim import Scene, FadeIn, Group, Transform",
+    "from manim import DOWN, Dot, RIGHT, LEFT, DL, DR, FadeIn, Group, Scene, Text, Transform, UL, UR, VGroup",
     "from ade.animations.components import BoundaryBuilder, CardBuilder, CardKind, ConnectionBuilder",
     "from ade.animations.themes import LIGHT",
 ]
@@ -36,6 +37,23 @@ def _slugify(label, fallback="Architecture"):
 
 def _coord(x, y):
     return f"[{round(x, 3)}, {round(y, 3)}, 0]"
+
+
+def _port_coord(node, port, offset, scale=1.0):
+    x, y = node.x, node.y
+    if port == "left":
+        x -= node.width / 2
+        y += offset
+    elif port == "right":
+        x += node.width / 2
+        y += offset
+    elif port == "top":
+        x += offset
+        y += node.height / 2
+    else:
+        x += offset
+        y -= node.height / 2
+    return _coord(x * scale, y * scale)
 
 
 def _resolve_logo(alias):
@@ -76,14 +94,33 @@ def _boundary_expr(box):
     return "".join(parts)
 
 
-def _connection_expr(src_var, dst_var, label, curved, label_scale=None):
+def _connection_expr(
+    src_var,
+    dst_var,
+    label,
+    curved,
+    label_scale=None,
+    route_offset=0.0,
+    color=None,
+    anchors=None,
+    label_position=None,
+):
     parts = [f"ConnectionBuilder().between({src_var}, {dst_var})"]
+    if anchors is not None:
+        source, target, horizontal = anchors
+        parts.append(f".anchors({source}, {target}, {horizontal!r})")
+    if label_position is not None:
+        parts.append(f".label_position({label_position})")
+    if color is not None:
+        parts.append(f".color({color!r})")
     if label:
         parts.append(f".label({label!r})")
         if label_scale is not None:
             parts.append(f".label_size({round(22 * label_scale, 3)})")
     if curved:
         parts.append(".curved()")
+    if route_offset:
+        parts.append(f".route_offset({round(route_offset, 3)})")
     parts.append(".build()")
     return "".join(parts)
 
@@ -117,17 +154,24 @@ def _generate_static(model):
     for i, box in enumerate(result.boundaries):
         lines.append(f"        boundary_{i} = {_boundary_expr(box)}")
 
-    conn_vars = _connection_definitions(model, lines)
+    use_legend = result.legend
+    conn_vars = _connection_definitions(model, result, lines, use_legend)
+    legend_vars, legend_steps = _legend_definitions(model, lines, use_legend)
 
     # Group the complete scene before scaling so connections and labels follow
     # the same transform as cards and boundaries.
     members = [f"boundary_{i}" for i in range(len(result.boundaries))]
     members += [f"cards[{n!r}]" for n in model.components]
     members += conn_vars
+    members += legend_vars
     if members:
         lines.append(f"        scene_group = Group({', '.join(members)})")
         if result.scale < 0.999:
             lines.append(f"        scene_group.scale({round(result.scale, 4)})")
+        if legend_vars:
+            corner = getattr(model, "legend_corner", "TR")
+            edge = {"TL": "UL", "TR": "UR", "BL": "DL", "BR": "DR"}[corner]
+            lines.append(f"        legend.to_corner({edge}, buff=0.3)")
 
     for i in range(len(result.boundaries)):
         lines.append(f"        self.play(FadeIn(boundary_{i}), run_time=1.2)")
@@ -135,35 +179,104 @@ def _generate_static(model):
     fade_ins = ", ".join(f"FadeIn(cards[{n!r}], scale=0.85)" for n in model.components)
     if fade_ins:
         lines.append(f"        self.play({fade_ins}, run_time=1.2)")
-
-    lines += _flow_lines(conn_vars)
+    lines += _flow_lines(model, conn_vars, legend_steps)
     lines.append("        self.wait(2)")
     return _assemble(scene_name, lines), scene_name, result.illegible
 
 
-def _connection_definitions(model, lines):
+def _connection_definitions(model, result, lines, use_legend=False):
     conn_vars = []
-    for flow in model.flows:
+    for flow_index, flow in enumerate(model.flows):
         lines.append("")
         lines.append(f"        # flow: {flow.label}")
-        for step in flow.steps:
+        for step_index, step in enumerate(flow.steps):
             var = f"conn_{len(conn_vars)}"
+            geometry = result.connections[len(conn_vars)]
+            anchors = (
+                _port_coord(result.nodes[step.source], geometry.source_port, geometry.source_offset),
+                _port_coord(result.nodes[step.target], geometry.target_port, geometry.target_offset),
+                geometry.horizontal,
+            )
+            label_position = _coord(geometry.label_x, geometry.label_y)
             expr = _connection_expr(
                 f"cards[{step.source!r}]",
                 f"cards[{step.target!r}]",
-                step.label,
+                None if use_legend else step.label,
                 step.curved,
+                route_offset=geometry.route_offset,
+                color=LIGHT.flow_color(flow_index, step_index),
+                anchors=anchors,
+                label_position=label_position,
             )
             lines.append(f"        {var} = {expr}")
             conn_vars.append(var)
     return conn_vars
 
 
-def _flow_lines(conn_vars):
+def _legend_definitions(model, lines, enabled=True):
+    if not enabled:
+        return [], {}
+    entries = [
+        (index, flow)
+        for index, flow in enumerate(model.flows)
+        if any(step.label for step in flow.steps)
+    ]
+    if not entries:
+        return [], {}
+
+    parts = []
+    step_vars = {}
+    for index, flow in entries:
+        color = LIGHT.flow_color(index)
+        header = f"legend_flow_{index}_header"
+        parts.append(
+            f"VGroup(Dot(radius=0.08, color={color!r}), Text({flow.label!r}, font_size=24, color={color!r})).arrange(RIGHT, buff=0.12)"
+        )
+        lines.append(f"        {header} = {parts.pop()}")
+        lines.append(f"        {header}.set_opacity(0)")
+        step_groups = []
+        for step_index, step in enumerate(flow.steps):
+            if not step.label:
+                continue
+            var = f"legend_flow_{index}_step_{step_index}"
+            lines.append(
+                f"        {var} = Text({step.label!r}, font_size=24, color={LIGHT.flow_color(index, step_index)!r}).set_opacity(0)"
+            )
+            step_groups.append(var)
+            step_vars[(index, step_index)] = (header, var)
+        entry = f"legend_entry_{index}"
+        members = [header, *step_groups]
+        lines.append(f"        {entry} = VGroup({', '.join(members)}).arrange(DOWN, aligned_edge=LEFT, buff=0.08)")
+        parts.append(entry)
+    lines.append(
+        "        legend = VGroup(" + ", ".join(parts) + ").arrange(RIGHT, buff=0.35)"
+    )
+    return ["legend"], step_vars
+
+
+def _flow_lines(model, conn_vars, legend_steps):
     lines = []
     if conn_vars:
-        for var in conn_vars:
-            lines.append(f"        self.play({var}.grow())")
+        connection_index = 0
+        for flow_index, flow in enumerate(model.flows):
+            flow_has_labels = any(step.label for step in flow.steps)
+            header_shown = False
+            for step_index, step in enumerate(flow.steps):
+                var = conn_vars[connection_index]
+                connection_index += 1
+                reveals = []
+                if flow_has_labels and not header_shown:
+                    header, _ = legend_steps.get((flow_index, step_index), (f"legend_flow_{flow_index}_header", ""))
+                    reveals.append(f"{header}.animate.set_opacity(1)")
+                    header_shown = True
+                if step.label and (flow_index, step_index) in legend_steps:
+                    _, step_var = legend_steps[(flow_index, step_index)]
+                    reveals.append(f"{step_var}.animate.set_opacity(1)")
+                anims = ", ".join([f"{var}.grow()", *reveals])
+                lines.append(f"        self.play({anims})")
+        if not model.flows:
+            for var in conn_vars:
+                lines.append(f"        self.play({var}.grow())")
         lines.append("")
         lines.append("        # a request travels through the pipeline")
         for var in conn_vars:
@@ -232,11 +345,19 @@ def _generate_timeline(model, timeline):
             reanchor = []
             for k, (var, src, tgt, label, curved) in enumerate(conns):
                 target = f"{var}_re{k}"
+                geometry = result.connections[k]
+                anchors = (
+                    _port_coord(result.nodes[src], geometry.source_port, geometry.source_offset, scale),
+                    _port_coord(result.nodes[tgt], geometry.target_port, geometry.target_offset, scale),
+                    geometry.horizontal,
+                )
+                label_position = _coord(geometry.label_x * scale, geometry.label_y * scale)
                 lines.append(
-                    f"        {target} = {_connection_expr(f'cards[{src!r}]', f'cards[{tgt!r}]', label, curved)}"
+                    f"        {target} = {_connection_expr(f'cards[{src!r}]', f'cards[{tgt!r}]', label, curved, route_offset=geometry.route_offset, anchors=anchors, label_position=label_position)}"
                 )
                 reanchor.append(f"Transform({var}, {target})")
             lines.append(f"        self.play({', '.join(reanchor)}, run_time=0.5)")
+        return result
 
     for op in timeline.ops:
         if isinstance(op, TLShow):
@@ -249,7 +370,7 @@ def _generate_timeline(model, timeline):
             snapshot([op.component.name])
         elif isinstance(op, TLConnect):
             edges.append((op.source, op.target))
-            snapshot([])  # positions may shift to make room for the new edge
+            result = snapshot([])  # positions may shift to make room for the new edge
             var = f"conn_{conn_count}"
             conn_count += 1
             expr = _connection_expr(
@@ -258,6 +379,27 @@ def _generate_timeline(model, timeline):
                 op.label,
                 op.curved,
                 label_scale=scale,
+                route_offset=result.connections[-1].route_offset,
+                color=LIGHT.flow_color(0, conn_count),
+                anchors=(
+                    _port_coord(
+                        result.nodes[op.source],
+                        result.connections[-1].source_port,
+                        result.connections[-1].source_offset,
+                        scale,
+                    ),
+                    _port_coord(
+                        result.nodes[op.target],
+                        result.connections[-1].target_port,
+                        result.connections[-1].target_offset,
+                        scale,
+                    ),
+                    result.connections[-1].horizontal,
+                ),
+                label_position=_coord(
+                    result.connections[-1].label_x * scale,
+                    result.connections[-1].label_y * scale,
+                ),
             )
             lines.append(f"        {var} = {expr}")
             lines.append(f"        self.play({var}.grow())")
