@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 .pytest_cache/
+.ruff_cache/
 
 # Virtual environments
 .venv
@@ -19,3 +20,9 @@ media/
 
 # Stuff
 .DS_Store
+
+# AI Harness
+.claude/
+.codex/
+.opencode/
+openspec/
